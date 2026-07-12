@@ -42,6 +42,7 @@ class ExperimentConfig:
     use_reliability_gates: bool = True
     use_context: bool = True
     bootstrap_iterations: int = 2000
+    training_scope: str = "joint"
 
 
 def resolve_device(requested: str = "auto") -> torch.device:
@@ -87,6 +88,8 @@ def run_experiment(
     device_name: str = "auto",
 ) -> Path:
     set_reproducible_seed(config.seed)
+    if config.training_scope not in {"joint", "meld", "emotiontalk"}:
+        raise ValueError("training_scope must be joint, meld, or emotiontalk")
     device = resolve_device(device_name)
     records = read_manifest(manifest_path)
     store = FeatureStore(feature_root)
@@ -110,8 +113,21 @@ def run_experiment(
         )
         for key, group in by_group.items()
     }
-    train_examples = examples[("meld", "train")] + examples[("emotiontalk", "train")]
-    sampler = BalancedDialogueSampler(train_examples, seed=config.seed)
+    source_datasets = (
+        ("meld", "emotiontalk")
+        if config.training_scope == "joint"
+        else (config.training_scope,)
+    )
+    train_examples = [
+        example
+        for dataset in source_datasets
+        for example in examples[(dataset, "train")]
+    ]
+    sampler = (
+        BalancedDialogueSampler(train_examples, seed=config.seed)
+        if config.training_scope == "joint"
+        else None
+    )
     train_loader = _loader(train_examples, batch_size=config.batch_size, sampler=sampler)
     validation_loaders = {
         dataset: _loader(examples[(dataset, "validation")], batch_size=config.batch_size)
@@ -124,7 +140,11 @@ def run_experiment(
 
     first = train_examples[0]
     unique_train_labels = torch.tensor(
-        [emotion_index(str(record.emotion)) for record in records if str(record.split) == "train"],
+        [
+            emotion_index(str(record.emotion))
+            for record in records
+            if str(record.split) == "train" and record.dataset in source_datasets
+        ],
         dtype=torch.long,
     )
     class_weights = sqrt_inverse_class_weights(unique_train_labels, num_classes=7)
@@ -144,7 +164,12 @@ def run_experiment(
         "majority_class": majority_class,
     }
     model = build_model(**model_config)
-    output_root = Path(output_directory) / config.model / f"seed-{config.seed}"
+    output_root = (
+        Path(output_directory)
+        / config.model
+        / config.training_scope
+        / f"seed-{config.seed}"
+    )
     output_root.mkdir(parents=True, exist_ok=True)
     checkpoint_path = output_root / "best.pt"
 
@@ -165,6 +190,7 @@ def run_experiment(
             device=device,
             class_weights=class_weights,
             checkpoint_metadata={"model_config": model_config, "experiment": asdict(config)},
+            selection_datasets=source_datasets,
         )
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
         model.load_state_dict(checkpoint["model_state_dict"])

@@ -4,6 +4,8 @@ __pycache__/
 .coverage
 htmlcov/
 .venv/
+build/
+*.egg-info/
 data/raw/
 data/processed/
 artifacts/features/
@@ -11,4 +13,3 @@ artifacts/checkpoints/
 artifacts/exports/
 *.log
 .DS_Store
-

@@ -7,6 +7,7 @@ from pathlib import Path
 import torch
 
 from .app import create_app
+from .asr_manifest import replace_text_with_asr
 from .data_adapters import (
     check_official_split_counts,
     count_records,
@@ -56,6 +57,11 @@ def build_parser() -> argparse.ArgumentParser:
     emotiontalk.add_argument("--output", required=True)
     emotiontalk.add_argument("--allow-partial", action="store_true")
 
+    asr_manifest = commands.add_parser("asr-manifest")
+    asr_manifest.add_argument("--manifest", required=True)
+    asr_manifest.add_argument("--output", required=True)
+    asr_manifest.add_argument("--device", default="cpu")
+
     validate = commands.add_parser("validate")
     validate.add_argument("--manifest", required=True)
     validate.add_argument("--official-counts", action="store_true")
@@ -87,6 +93,11 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--learning-rate", type=float, default=1e-4)
     train.add_argument("--weight-decay", type=float, default=1e-2)
     train.add_argument("--device", default="auto")
+    train.add_argument(
+        "--training-scope",
+        choices=["joint", "meld", "emotiontalk"],
+        default="joint",
+    )
     train.add_argument("--no-language", action="store_true")
     train.add_argument("--no-gates", action="store_true")
     train.add_argument("--no-context", action="store_true")
@@ -170,6 +181,12 @@ def main(argv: list[str] | None = None) -> int:
         write_manifest(records, args.output)
         return 0
 
+    if args.command == "asr-manifest":
+        transcriber = FasterWhisperTranscriber(device=args.device)
+        records = replace_text_with_asr(read_manifest(args.manifest), transcriber)
+        write_manifest(records, args.output)
+        return 0
+
     if args.command == "validate":
         records = read_manifest(args.manifest)
         report = validate_dataset_records(records)
@@ -245,6 +262,7 @@ def main(argv: list[str] | None = None) -> int:
                 use_reliability_gates=not args.no_gates,
                 use_context=not args.no_context,
                 modality_dropout=0.0 if args.no_modality_dropout else 0.2,
+                training_scope=args.training_scope,
             ),
             device_name=args.device,
         )

@@ -1,4 +1,4 @@
-from bimer.app import analysis_rows, timeline_figure, transcript_rows
+from bimer.app import analysis_rows, timeline_figure, timeline_html, transcript_rows
 from bimer.inference import TranscriptSegment
 from bimer.schema import AnalysisResult, AnalysisSegment
 
@@ -39,3 +39,10 @@ def test_timeline_figure_marks_each_segment():
     figure = timeline_figure(_result())
     assert len(figure.axes) == 1
     assert len(figure.axes[0].patches) == 2
+
+
+def test_timeline_html_can_seek_the_uploaded_video():
+    html = timeline_html(_result())
+    assert "currentTime=0.0" in html
+    assert "currentTime=1.5" in html
+    assert "dialogue-video" in html

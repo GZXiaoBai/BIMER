@@ -1,0 +1,20 @@
+seeds: [42, 123, 2026]
+models:
+  - majority
+  - text
+  - audio
+  - vision
+  - early_mlp
+  - early_context
+  - lagf
+training_scopes: [joint, meld, emotiontalk]
+ablations:
+  no_language: [--no-language]
+  no_gates: [--no-gates]
+  no_context: [--no-context]
+  no_modality_dropout: [--no-modality-dropout]
+robustness:
+  missing_modalities: [text, audio, vision]
+  audio_snr_db: [10, 20]
+  frame_drop_fraction: [0.25, 0.50]
+  transcript_sources: [human, whisper]

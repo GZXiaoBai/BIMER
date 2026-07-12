@@ -224,12 +224,17 @@ def evaluate_batches(
     )
 
 
-def validation_selection_score(reports: dict[str, dict[str, object]]) -> float:
-    required = ("meld", "emotiontalk")
+def validation_selection_score(
+    reports: dict[str, dict[str, object]],
+    *,
+    datasets: Sequence[str] = ("meld", "emotiontalk"),
+) -> float:
     try:
-        scores = [float(reports[dataset]["weighted_f1"]) for dataset in required]
+        scores = [float(reports[dataset]["weighted_f1"]) for dataset in datasets]
     except KeyError as exc:
-        raise ValueError("validation reports must include meld and emotiontalk") from exc
+        raise ValueError("validation reports do not include every selection dataset") from exc
+    if not scores:
+        raise ValueError("at least one selection dataset is required")
     return sum(scores) / len(scores)
 
 
@@ -267,6 +272,7 @@ def fit_model(
     device: torch.device,
     class_weights: Tensor | None = None,
     checkpoint_metadata: dict[str, object] | None = None,
+    selection_datasets: Sequence[str] = ("meld", "emotiontalk"),
 ) -> FitHistory:
     if set(validation_batches) != {"meld", "emotiontalk"}:
         raise ValueError("validation_batches must contain meld and emotiontalk")
@@ -299,7 +305,7 @@ def fit_model(
                 device=device,
                 label_names=label_names,
             ).metrics
-        score = validation_selection_score(validation)
+        score = validation_selection_score(validation, datasets=selection_datasets)
         summaries.append(
             EpochSummary(
                 epoch=epoch,

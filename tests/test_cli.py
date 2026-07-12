@@ -8,6 +8,7 @@ def test_cli_exposes_all_reproducible_workflow_commands():
     expected = {
         "prepare-meld",
         "prepare-emotiontalk",
+        "asr-manifest",
         "validate",
         "extract-features",
         "train",
@@ -41,6 +42,7 @@ def test_train_command_defaults_match_the_approved_plan():
     assert args.patience == 7
     assert args.learning_rate == 1e-4
     assert args.weight_decay == 1e-2
+    assert args.training_scope == "joint"
 
 
 def test_feature_command_accepts_pre_encoder_robustness_conditions():

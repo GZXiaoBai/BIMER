@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from html import escape
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -77,6 +78,29 @@ def timeline_figure(result: AnalysisResult):
     return figure
 
 
+def timeline_html(result: AnalysisResult) -> str:
+    buttons = []
+    for segment in result.segments:
+        color = _COLORS[str(segment.emotion)]
+        title = escape(f"{segment.start_seconds:.1f}s · {segment.emotion} · {segment.text}")
+        script = (
+            "const v=document.querySelector('#dialogue-video video');"
+            f"if(v){{v.currentTime={segment.start_seconds};v.play();}}"
+            "return false;"
+        )
+        buttons.append(
+            f'<button title="{title}" onclick="{script}" '
+            f'style="background:{color};color:white;border:0;border-radius:6px;'
+            'padding:8px 10px;margin:3px;cursor:pointer">'
+            f'{segment.start_seconds:.1f}s {escape(str(segment.emotion))}</button>'
+        )
+    return (
+        '<div aria-label="clickable emotion timeline" style="display:flex;flex-wrap:wrap">'
+        + "".join(buttons)
+        + "</div>"
+    )
+
+
 def _rows_to_segments(rows: Any) -> list[TranscriptSegment]:
     if hasattr(rows, "values"):
         rows = rows.values.tolist()
@@ -120,6 +144,7 @@ def create_app(
         return (
             analysis_rows(result),
             timeline_figure(result),
+            timeline_html(result),
             result.to_dict(),
             str(json_path),
             str(csv_path),
@@ -132,7 +157,7 @@ def create_app(
         )
         detected_state = gr.State("en")
         with gr.Row():
-            video = gr.Video(label="对话视频", sources=["upload"])
+            video = gr.Video(label="对话视频", sources=["upload"], elem_id="dialogue-video")
             requested_language = gr.Radio(
                 choices=[("自动检测", "auto"), ("中文", "zh"), ("英文", "en")],
                 value="auto",
@@ -161,6 +186,7 @@ def create_app(
             label="逐句结果",
         )
         timeline = gr.Plot(label="情绪时间线")
+        clickable_timeline = gr.HTML(label="点击跳转到对应片段")
         raw_json = gr.JSON(label="结构化结果")
         with gr.Row():
             json_file = gr.File(label="JSON导出")
@@ -174,6 +200,13 @@ def create_app(
         analyze_button.click(
             run_analysis,
             inputs=[video, detected_state, transcript],
-            outputs=[analysis, timeline, raw_json, json_file, csv_file],
+            outputs=[
+                analysis,
+                timeline,
+                clickable_timeline,
+                raw_json,
+                json_file,
+                csv_file,
+            ],
         )
     return demo

@@ -96,6 +96,10 @@ def test_validation_score_is_mean_of_bilingual_weighted_f1():
     assert validation_selection_score(
         {"meld": {"weighted_f1": 0.6}, "emotiontalk": {"weighted_f1": 0.8}}
     ) == 0.7
+    assert validation_selection_score(
+        {"meld": {"weighted_f1": 0.6}, "emotiontalk": {"weighted_f1": 0.8}},
+        datasets=("meld",),
+    ) == 0.6
 
 
 def test_fit_model_writes_best_checkpoint(tmp_path):
