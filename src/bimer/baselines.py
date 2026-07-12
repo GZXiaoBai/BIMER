@@ -15,6 +15,36 @@ def _uniform_gates(modality_mask: Tensor, attention_mask: Tensor) -> Tensor:
     return gates / gates.sum(dim=-1, keepdim=True).clamp_min(1.0)
 
 
+class MajorityClassifier(nn.Module):
+    def __init__(self, majority_class: int, *, num_classes: int = 7) -> None:
+        super().__init__()
+        if not 0 <= majority_class < num_classes:
+            raise ValueError("majority_class is outside the class range")
+        self.majority_class = majority_class
+        self.num_classes = num_classes
+
+    def forward(
+        self,
+        *,
+        text_features: Tensor,
+        audio_features: Tensor,
+        vision_features: Tensor,
+        modality_mask: Tensor,
+        attention_mask: Tensor,
+        language_ids: Tensor,
+    ) -> FusionOutput:
+        del audio_features, vision_features, language_ids
+        logits = torch.zeros(
+            *text_features.shape[:2],
+            self.num_classes,
+            device=text_features.device,
+            dtype=text_features.dtype,
+        )
+        logits[..., self.majority_class] = 1.0
+        logits = logits * attention_mask.unsqueeze(-1)
+        return FusionOutput(logits=logits, gates=_uniform_gates(modality_mask, attention_mask))
+
+
 class UnimodalClassifier(nn.Module):
     def __init__(
         self,
@@ -155,4 +185,3 @@ class EarlyFusionContext(nn.Module):
         )
         logits = self.classifier(contextualized) * attention_mask.unsqueeze(-1)
         return FusionOutput(logits=logits, gates=_uniform_gates(modality_mask, attention_mask))
-

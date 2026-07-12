@@ -61,3 +61,9 @@ class FeatureStore:
                 vision=payload["vision"],
                 modality_mask=payload["modality_mask"],
             )
+
+    def paths(self, dataset: str, split: str) -> list[Path]:
+        return sorted((self.root / dataset / split).glob("features-*.npz"))
+
+    def read_all(self, dataset: str, split: str) -> list[FeatureShard]:
+        return [self.read(path) for path in self.paths(dataset, split)]

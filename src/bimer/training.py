@@ -266,13 +266,10 @@ def fit_model(
     config: FitConfig,
     device: torch.device,
     class_weights: Tensor | None = None,
+    checkpoint_metadata: dict[str, object] | None = None,
 ) -> FitHistory:
     if set(validation_batches) != {"meld", "emotiontalk"}:
         raise ValueError("validation_batches must contain meld and emotiontalk")
-    train_materialized = list(train_batches)
-    validation_materialized = {
-        dataset: list(batches) for dataset, batches in validation_batches.items()
-    }
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=config.learning_rate,
@@ -289,13 +286,13 @@ def fit_model(
     for epoch in range(1, config.max_epochs + 1):
         train_loss = train_epoch(
             model,
-            train_materialized,
+            train_batches,
             optimizer,
             device=device,
             class_weights=class_weights,
         )
         validation: dict[str, dict[str, object]] = {}
-        for dataset, batches in validation_materialized.items():
+        for dataset, batches in validation_batches.items():
             validation[dataset] = evaluate_batches(
                 model,
                 batches,
@@ -322,6 +319,7 @@ def fit_model(
                     "selection_score": score,
                     "fit_config": asdict(config),
                     "label_names": tuple(label_names),
+                    "metadata": checkpoint_metadata or {},
                 },
                 checkpoint,
             )

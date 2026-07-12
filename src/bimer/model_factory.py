@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from torch import nn
 
-from .baselines import EarlyFusionContext, EarlyFusionMLP, UnimodalClassifier
+from .baselines import (
+    EarlyFusionContext,
+    EarlyFusionMLP,
+    MajorityClassifier,
+    UnimodalClassifier,
+)
 from .model import LanguageAwareGatedFusion
 
 
@@ -19,7 +24,10 @@ def build_model(
     use_language_embedding: bool = True,
     use_reliability_gates: bool = True,
     use_context: bool = True,
+    majority_class: int = 0,
 ) -> nn.Module:
+    if name == "majority":
+        return MajorityClassifier(majority_class, num_classes=num_classes)
     if name == "text":
         return UnimodalClassifier(
             "text", input_dim=text_dim, hidden_dim=hidden_dim, num_classes=num_classes

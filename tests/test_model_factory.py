@@ -5,7 +5,7 @@ from bimer.model_factory import build_model
 
 @pytest.mark.parametrize(
     "name",
-    ["text", "audio", "vision", "early_mlp", "early_context", "lagf"],
+    ["majority", "text", "audio", "vision", "early_mlp", "early_context", "lagf"],
 )
 def test_model_factory_builds_every_required_experiment(name):
     model = build_model(
@@ -15,6 +15,7 @@ def test_model_factory_builds_every_required_experiment(name):
         vision_dim=5,
         hidden_dim=8,
         num_classes=2,
+        majority_class=0,
     )
     assert model is not None
 
