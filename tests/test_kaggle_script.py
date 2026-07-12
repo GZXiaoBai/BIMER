@@ -63,3 +63,16 @@ def test_kaggle_guide_documents_parallel_pipeline_and_rollback():
     assert "watch -n 2 nvidia-smi" in guide
     assert "--mode serial" in guide
     assert "staging" in guide
+
+
+def test_kaggle_guide_documents_cross_session_train_ranges():
+    project_root = Path(__file__).parents[1]
+    guide = (project_root / "docs" / "kaggle.md").read_text(encoding="utf-8")
+
+    assert "--start-shard 0" in guide
+    assert "--end-shard 120" in guide
+    assert "--start-shard 840" in guide
+    assert "--end-shard 964" in guide
+    assert "verify-features" in guide
+    assert "dirs_exist_ok=True" in guide
+    assert "range-00000-00120.json" in guide

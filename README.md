@@ -103,6 +103,8 @@ bimer extract-features \
 
 双 GPU 模式会独立缓存三个模态并按样本 ID 合并；已有合法分片可断点续跑。单 GPU 环境可使用 `--mode serial --device cuda`。Kaggle 的分阶段运行、监控和持久化方法见 [docs/kaggle.md](docs/kaggle.md)。
 
+EmotionTalk train 的15,413条样本使用全局 shard 范围跨 Kaggle Session 提取。`--start-shard` 与 `--end-shard` 保留全局文件编号，`bimer verify-features` 在每段 Quick Save 前校验ID、维度、掩码和有限值；八段区间及恢复命令见 [docs/kaggle.md](docs/kaggle.md)。
+
 ### 3. 训练与评估
 
 ```bash

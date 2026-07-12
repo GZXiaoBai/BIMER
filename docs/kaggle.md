@@ -113,7 +113,75 @@ bimer extract-features \
 
 验证完成后，依次处理 `meld/{train,dev,test}` 与 `emotiontalk/{train,validation,test}`。不同数据集和划分使用不同特征根目录，并在完成后发布为私有 Kaggle Dataset。
 
-## 7. 资源策略
+## 7. EmotionTalk train 跨 Session 分段提取
+
+train 共15,413条，使用 `--shard-size 16` 时为964个全局分片。按左闭右开区间依次运行：
+
+```text
+[0, 120) [120, 240) [240, 360) [360, 480)
+[480, 600) [600, 720) [720, 840) [840, 964)
+```
+
+每个区间沿用同一个目录 `/kaggle/working/features-emotiontalk-train-v4`。例如第一段：
+
+```bash
+bimer extract-features \
+  --manifest /kaggle/working/bimer-output/emotiontalk-feature.jsonl \
+  --features /kaggle/working/features-emotiontalk-train-v4 \
+  --staging /kaggle/working/features-emotiontalk-train-v4 \
+  --yunet-model /kaggle/working/yunet.onnx \
+  --dataset emotiontalk --split train --mode parallel \
+  --text-audio-device cuda:0 --vision-device cuda:1 \
+  --text-batch-size 64 --audio-batch-size 8 --vision-batch-size 8 \
+  --audio-workers 4 --vision-workers 4 --queue-capacity 8 \
+  --shard-size 16 --start-shard 0 --end-shard 120
+```
+
+完成后必须验证并写入完成标记：
+
+```bash
+bimer verify-features \
+  --manifest /kaggle/working/bimer-output/emotiontalk-feature.jsonl \
+  --features /kaggle/working/features-emotiontalk-train-v4 \
+  --dataset emotiontalk --split train --shard-size 16 \
+  --start-shard 0 --end-shard 120 --write-completion
+```
+
+成功后会生成 `ranges/range-00000-00120.json`。此文件存在且内容中 `is_valid=true` 后，使用 Kaggle **Quick Save** 保存版本，再进入下一段。
+
+新 Session 启动时，先从最近一次已保存的 Notebook Output 恢复同一目录：
+
+```python
+from pathlib import Path
+import shutil
+
+saved = Path(
+    "/kaggle/input/notebooks/zhoujunjie2/"
+    "bimer-emotiontalk-bootstrap/features-emotiontalk-train-v4"
+)
+working = Path("/kaggle/working/features-emotiontalk-train-v4")
+if saved.is_dir():
+    shutil.copytree(saved, working, dirs_exist_ok=True)
+```
+
+恢复后先验证上一段，再开始下一段。最后一段使用：
+
+```bash
+--start-shard 840 --end-shard 964
+```
+
+八段全部完成后执行不带范围的全量验收：
+
+```bash
+bimer verify-features \
+  --manifest /kaggle/working/bimer-output/emotiontalk-feature.jsonl \
+  --features /kaggle/working/features-emotiontalk-train-v4 \
+  --dataset emotiontalk --split train --shard-size 16
+```
+
+最终必须报告 `samples=15413`、`verified_shards=964`、`start_shard=0`、`end_shard=964`。范围参数只允许用于 `--mode parallel`，且必须同时指定dataset、split、start和end。重复执行同一区间会验证并跳过已有最终分片；中断时可用完全相同的命令续跑。
+
+## 8. 资源策略
 
 - 三个预训练编码器全部冻结；GPU 0 先运行文本再运行语音，GPU 1 同时运行视觉。
 - GPU 批量由 `--text-batch-size`、`--audio-batch-size` 和 `--vision-batch-size` 控制；遇到 CUDA OOM 会逐次减半，最低降到1。
