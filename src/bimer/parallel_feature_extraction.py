@@ -616,15 +616,16 @@ class ParallelFeatureExtractionRunner:
         )
         if len(completed_shards) != shard_count:
             with ThreadPoolExecutor(
-                max_workers=2, thread_name_prefix="bimer-gpu"
+                max_workers=1, thread_name_prefix="bimer-vision-gpu"
             ) as executor:
-                gpu0 = executor.submit(
-                    self._run_text_then_audio, records, completed_shards
-                )
                 gpu1 = executor.submit(
                     self._run_vision, records, completed_shards
                 )
-                gpu0.result()
+                # Keep Hugging Face text/audio model construction on the
+                # calling thread. XLS-R can deadlock when CUDA is initialized
+                # from a worker thread, while the independent vision branch
+                # still overlaps on the second GPU.
+                self._run_text_then_audio(records, completed_shards)
                 gpu1.result()
         return self._merge_all(records, final_store)
 
