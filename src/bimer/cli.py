@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 import json
+import multiprocessing
 from pathlib import Path
 
 import torch
@@ -11,6 +14,7 @@ from .asr_manifest import replace_text_with_asr
 from .data_adapters import (
     check_official_split_counts,
     count_records,
+    load_emotiontalk_official_csv,
     load_emotiontalk_manifest,
     load_meld_csv,
 )
@@ -31,6 +35,13 @@ from .inference import (
 )
 from .manifest import read_manifest, write_manifest
 from .model_factory import build_model
+from .parallel_feature_extraction import (
+    ParallelFeatureExtractionConfig,
+    ParallelFeatureExtractionRunner,
+    initialize_vision_worker,
+    load_waveform_worker,
+    prepare_video_worker,
+)
 from .robustness import add_noise_at_snr
 from .validation import validate_dataset_records
 
@@ -57,6 +68,13 @@ def build_parser() -> argparse.ArgumentParser:
     emotiontalk.add_argument("--output", required=True)
     emotiontalk.add_argument("--allow-partial", action="store_true")
 
+    emotiontalk_official = commands.add_parser("prepare-emotiontalk-official")
+    emotiontalk_official.add_argument("--labels-csv", required=True)
+    emotiontalk_official.add_argument("--transcriptions-csv", required=True)
+    emotiontalk_official.add_argument("--media-root", required=True)
+    emotiontalk_official.add_argument("--output", required=True)
+    emotiontalk_official.add_argument("--allow-partial", action="store_true")
+
     asr_manifest = commands.add_parser("asr-manifest")
     asr_manifest.add_argument("--manifest", required=True)
     asr_manifest.add_argument("--output", required=True)
@@ -76,6 +94,18 @@ def build_parser() -> argparse.ArgumentParser:
     extract.add_argument("--shard-size", type=int, default=1024)
     extract.add_argument("--audio-snr", type=float)
     extract.add_argument("--frame-drop", type=float, default=0.0)
+    extract.add_argument(
+        "--mode", choices=["serial", "parallel"], default="serial"
+    )
+    extract.add_argument("--text-audio-device", default="cuda:0")
+    extract.add_argument("--vision-device", default="cuda:1")
+    extract.add_argument("--text-batch-size", type=int, default=64)
+    extract.add_argument("--audio-batch-size", type=int, default=8)
+    extract.add_argument("--vision-batch-size", type=int, default=8)
+    extract.add_argument("--audio-workers", type=int, default=4)
+    extract.add_argument("--vision-workers", type=int, default=4)
+    extract.add_argument("--queue-capacity", type=int, default=8)
+    extract.add_argument("--staging")
 
     train = commands.add_parser("train")
     train.add_argument("--manifest", required=True)
@@ -181,6 +211,17 @@ def main(argv: list[str] | None = None) -> int:
         write_manifest(records, args.output)
         return 0
 
+    if args.command == "prepare-emotiontalk-official":
+        records = load_emotiontalk_official_csv(
+            args.labels_csv,
+            args.transcriptions_csv,
+            media_root=args.media_root,
+        )
+        if not args.allow_partial:
+            check_official_split_counts("emotiontalk", count_records(records))
+        write_manifest(records, args.output)
+        return 0
+
     if args.command == "asr-manifest":
         transcriber = FasterWhisperTranscriber(device=args.device)
         records = replace_text_with_asr(read_manifest(args.manifest), transcriber)
@@ -206,14 +247,85 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if report.is_valid else 1
 
     if args.command == "extract-features":
-        device = resolve_device(args.device)
-        extractor_device = "cuda" if device.type == "cuda" else "cpu"
         records = [
             record
             for record in read_manifest(args.manifest)
             if (not args.dataset or record.dataset == args.dataset)
             and (not args.split or str(record.split) == args.split)
         ]
+        if args.mode == "parallel":
+            requested_cuda_indices = []
+            for device_name in (args.text_audio_device, args.vision_device):
+                if device_name.startswith("cuda:"):
+                    requested_cuda_indices.append(int(device_name.split(":", 1)[1]))
+            if requested_cuda_indices and torch.cuda.device_count() <= max(
+                requested_cuda_indices
+            ):
+                raise RuntimeError(
+                    "parallel extraction requested unavailable CUDA devices: "
+                    f"{args.text_audio_device}, {args.vision_device}"
+                )
+            config = ParallelFeatureExtractionConfig(
+                shard_size=args.shard_size,
+                text_batch_size=args.text_batch_size,
+                audio_batch_size=args.audio_batch_size,
+                vision_batch_size=args.vision_batch_size,
+                audio_workers=args.audio_workers,
+                vision_workers=args.vision_workers,
+                queue_capacity=args.queue_capacity,
+            )
+            spawn_context = multiprocessing.get_context("spawn")
+            audio_executor_factory = partial(
+                ProcessPoolExecutor,
+                mp_context=spawn_context,
+            )
+            vision_executor_factory = partial(
+                ProcessPoolExecutor,
+                initializer=initialize_vision_worker,
+                initargs=(Path(args.yunet_model), args.frame_drop, 42),
+                mp_context=spawn_context,
+            )
+            runner = ParallelFeatureExtractionRunner(
+                staging_root=Path(args.staging or args.features),
+                config=config,
+                text_extractor_factory=lambda: TextFeatureExtractor(
+                    device=args.text_audio_device
+                ),
+                audio_extractor_factory=lambda: AudioFeatureExtractor(
+                    device=args.text_audio_device
+                ),
+                vision_extractor_factory=lambda: VisionFeatureExtractor(
+                    device=args.vision_device
+                ),
+                waveform_loader=partial(
+                    load_waveform_worker,
+                    audio_snr=args.audio_snr,
+                    seed=42,
+                ),
+                prepared_loader=prepare_video_worker,
+                audio_executor_factory=audio_executor_factory,
+                vision_executor_factory=vision_executor_factory,
+            )
+            final_store = FeatureStore(args.features)
+            for dataset in sorted({record.dataset for record in records}):
+                for split in sorted(
+                    {
+                        str(record.split)
+                        for record in records
+                        if record.dataset == dataset
+                    }
+                ):
+                    group = [
+                        record
+                        for record in records
+                        if record.dataset == dataset
+                        and str(record.split) == split
+                    ]
+                    runner.run(group, final_store)
+            return 0
+
+        device = resolve_device(args.device)
+        extractor_device = "cuda" if device.type == "cuda" else "cpu"
         text = TextFeatureExtractor(device=extractor_device)
         audio = AudioFeatureExtractor(device=extractor_device)
         vision = VisionFeatureExtractor(device=extractor_device)

@@ -13,3 +13,4 @@ artifacts/checkpoints/
 artifacts/exports/
 *.log
 .DS_Store
+Hugging Face Token.txt

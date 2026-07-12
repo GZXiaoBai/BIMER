@@ -64,6 +64,16 @@ bimer prepare-meld \
 EmotionTalk：
 
 ```bash
+bimer prepare-emotiontalk-official \
+  --labels-csv data/raw/emotiontalk-official/EmotionTalk/dataset/mm-process/mm.csv \
+  --transcriptions-csv data/raw/emotiontalk-official/EmotionTalk/dataset/mm-process/transcription.csv \
+  --media-root data/raw/emotiontalk \
+  --output data/processed/emotiontalk.jsonl
+```
+
+上述命令对应 EmotionTalk 当前官方发布格式，会按官方演员组划分训练、验证和测试集。如果使用自行转换的三个 JSON 文件，仍可使用兼容入口：
+
+```bash
 bimer prepare-emotiontalk \
   --train-json data/raw/emotiontalk/train.json \
   --validation-json data/raw/emotiontalk/validation.json \
@@ -86,10 +96,12 @@ bimer extract-features \
   --manifest data/processed/all.jsonl \
   --features artifacts/features/standard \
   --yunet-model artifacts/models/face_detection_yunet_2023mar.onnx \
-  --device cuda
+  --mode parallel \
+  --text-audio-device cuda:0 \
+  --vision-device cuda:1
 ```
 
-Kaggle 的分阶段运行和持久化方法见 [docs/kaggle.md](docs/kaggle.md)。
+双 GPU 模式会独立缓存三个模态并按样本 ID 合并；已有合法分片可断点续跑。单 GPU 环境可使用 `--mode serial --device cuda`。Kaggle 的分阶段运行、监控和持久化方法见 [docs/kaggle.md](docs/kaggle.md)。
 
 ### 3. 训练与评估
 
@@ -162,4 +174,3 @@ docs/               Kaggle、实验协议和论文结构
 data/               本地清单；原始数据默认不纳入Git
 artifacts/          特征、检查点、实验结果和导出文件
 ```
-

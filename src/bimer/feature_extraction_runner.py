@@ -69,6 +69,20 @@ class DatasetFeatureExtractionRunner:
         written: list[Path] = []
         for shard_index, start in enumerate(range(0, len(records), shard_size)):
             chunk = records[start : start + shard_size]
+            expected_sample_ids = np.asarray(
+                [record.sample_id for record in chunk], dtype=str
+            )
+            shard_path = store.path(dataset, split, shard_index)
+            if shard_path.is_file():
+                existing = store.read(shard_path)
+                if not np.array_equal(
+                    existing.sample_ids.astype(str), expected_sample_ids
+                ):
+                    raise ValueError(
+                        f"existing shard {shard_path} has unexpected sample IDs"
+                    )
+                written.append(shard_path)
+                continue
             video_paths: list[Path] = []
             for record in chunk:
                 if record.video_path is None:
@@ -102,7 +116,7 @@ class DatasetFeatureExtractionRunner:
                 axis=-1,
             )
             shard = FeatureShard(
-                sample_ids=np.asarray([record.sample_id for record in chunk]),
+                sample_ids=expected_sample_ids,
                 text=np.asarray(text, dtype=np.float32),
                 audio=np.asarray(audio, dtype=np.float32),
                 vision=vision,

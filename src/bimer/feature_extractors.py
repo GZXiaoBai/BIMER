@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import io
-import subprocess
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -72,18 +70,15 @@ class AudioFeatureExtractor:
         device: str = "cpu",
     ) -> None:
         try:
-            from transformers import AutoModel, AutoProcessor
+            from transformers import AutoFeatureExtractor, AutoModel
         except ImportError as exc:
             raise RuntimeError("Install bimer[inference] to extract audio features") from exc
         self.device = torch.device(device)
-        self.processor = AutoProcessor.from_pretrained(model_name)
+        self.processor = AutoFeatureExtractor.from_pretrained(model_name)
         self.model = AutoModel.from_pretrained(model_name).to(self.device).eval()
         self.model.requires_grad_(False)
 
-    @torch.inference_mode()
-    def encode(self, waveforms: Sequence[np.ndarray]) -> np.ndarray:
-        if not waveforms:
-            return np.empty((0, self.output_dim), np.float32)
+    def _encode_batch(self, waveforms: Sequence[np.ndarray]) -> np.ndarray:
         inputs = self.processor(
             [np.asarray(waveform, np.float32) for waveform in waveforms],
             sampling_rate=16000,
@@ -105,54 +100,49 @@ class AudioFeatureExtractor:
             pooled = mean_pool_hidden(hidden, feature_mask)
         return pooled.cpu().numpy().astype(np.float32)
 
-
-def _probe_duration(video_path: Path) -> float:
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(video_path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return float(result.stdout.strip())
+    @torch.inference_mode()
+    def encode(
+        self,
+        waveforms: Sequence[np.ndarray],
+        *,
+        batch_size: int = 4,
+    ) -> np.ndarray:
+        if not waveforms:
+            return np.empty((0, self.output_dim), np.float32)
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        outputs = [
+            self._encode_batch(waveforms[start : start + batch_size])
+            for start in range(0, len(waveforms), batch_size)
+        ]
+        return np.concatenate(outputs)
 
 
 def read_uniform_video_frames(video_path: Path | str, *, count: int = 16) -> np.ndarray:
+    try:
+        import cv2
+    except ImportError as exc:
+        raise RuntimeError("Install opencv-python-headless to read video frames") from exc
+
     path = Path(video_path)
-    duration = _probe_duration(path)
-    timestamps = np.linspace(0.0, max(0.0, duration - 0.001), count)
+    capture = cv2.VideoCapture(str(path))
+    if not capture.isOpened():
+        capture.release()
+        raise RuntimeError(f"Cannot open video {path}")
+    total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames <= 0:
+        capture.release()
+        raise RuntimeError(f"Video has no readable frames: {path}")
     frames: list[np.ndarray] = []
-    for timestamp in timestamps:
-        result = subprocess.run(
-            [
-                "ffmpeg",
-                "-v",
-                "error",
-                "-ss",
-                f"{timestamp:.6f}",
-                "-i",
-                str(path),
-                "-frames:v",
-                "1",
-                "-f",
-                "image2pipe",
-                "-vcodec",
-                "png",
-                "-",
-            ],
-            check=True,
-            capture_output=True,
-        )
-        with Image.open(io.BytesIO(result.stdout)) as image:
-            frames.append(np.asarray(image.convert("RGB")))
+    try:
+        for index in uniform_frame_indices(total_frames, count):
+            capture.set(cv2.CAP_PROP_POS_FRAMES, int(index))
+            readable, frame = capture.read()
+            if not readable or frame is None:
+                raise RuntimeError(f"Cannot read frame {index} from {path}")
+            frames.append(frame[:, :, ::-1].copy())
+    finally:
+        capture.release()
     return np.stack(frames)
 
 
@@ -194,6 +184,47 @@ class YuNetFaceCropper:
         return frame[top:bottom, left:right], True
 
 
+def prepare_video_clip(
+    video_path: Path | str,
+    *,
+    face_cropper: YuNetFaceCropper,
+    frame_drop_fraction: float = 0.0,
+    seed: int = 42,
+) -> tuple[np.ndarray, bool]:
+    frames = read_uniform_video_frames(video_path, count=16)
+    if frame_drop_fraction:
+        frames = drop_video_frames(frames, fraction=frame_drop_fraction, seed=seed)
+    prepared: list[np.ndarray] = []
+    detected: list[bool] = []
+    for frame in frames:
+        crop, found = face_cropper.crop_largest(frame)
+        prepared.append(np.asarray(Image.fromarray(crop).resize((112, 112))))
+        detected.append(found)
+    return np.stack(prepared), vision_modality_available(detected)
+
+
+def _prepare_clip_tensor(clips: Sequence[np.ndarray]) -> Tensor:
+    if any(
+        np.asarray(clip).ndim != 4
+        or np.asarray(clip).shape[0] != 16
+        or np.asarray(clip).shape[-1] != 3
+        for clip in clips
+    ):
+        raise ValueError("R3D-18 inputs must contain 16 RGB frames")
+    array = np.stack(clips)
+    tensor = torch.from_numpy(array.copy()).permute(0, 1, 4, 2, 3).float() / 255.0
+    batch, frames, channels, height, width = tensor.shape
+    tensor = torch.nn.functional.interpolate(
+        tensor.reshape(batch * frames, channels, height, width),
+        size=(112, 112),
+        mode="bilinear",
+        align_corners=False,
+    ).reshape(batch, frames, channels, 112, 112)
+    mean = torch.tensor([0.43216, 0.394666, 0.37645]).view(1, 1, 3, 1, 1)
+    std = torch.tensor([0.22803, 0.22145, 0.216989]).view(1, 1, 3, 1, 1)
+    return ((tensor - mean) / std).permute(0, 2, 1, 3, 4)
+
+
 class VisionFeatureExtractor:
     output_dim = 512
 
@@ -207,18 +238,30 @@ class VisionFeatureExtractor:
         self.model.requires_grad_(False)
 
     @torch.inference_mode()
-    def encode_frames(self, frames: np.ndarray) -> np.ndarray:
-        if frames.shape[0] != 16:
-            raise ValueError("R3D-18 input must contain exactly 16 frames")
-        tensor = torch.from_numpy(frames.copy()).permute(0, 3, 1, 2).float() / 255.0
-        tensor = torch.nn.functional.interpolate(
-            tensor, size=(112, 112), mode="bilinear", align_corners=False
-        )
-        mean = torch.tensor([0.43216, 0.394666, 0.37645]).view(1, 3, 1, 1)
-        std = torch.tensor([0.22803, 0.22145, 0.216989]).view(1, 3, 1, 1)
-        tensor = (tensor - mean) / std
-        tensor = tensor.permute(1, 0, 2, 3).unsqueeze(0).to(self.device)
+    def _encode_clip_batch(self, clips: Sequence[np.ndarray]) -> np.ndarray:
+        tensor = _prepare_clip_tensor(clips).to(self.device)
         return self.model(tensor).cpu().numpy().astype(np.float32)
+
+    def encode_clips(
+        self,
+        clips: Sequence[np.ndarray],
+        *,
+        batch_size: int = 8,
+    ) -> np.ndarray:
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        outputs = [
+            self._encode_clip_batch(clips[start : start + batch_size])
+            for start in range(0, len(clips), batch_size)
+        ]
+        return (
+            np.concatenate(outputs)
+            if outputs
+            else np.empty((0, self.output_dim), dtype=np.float32)
+        )
+
+    def encode_frames(self, frames: np.ndarray) -> np.ndarray:
+        return self.encode_clips([frames], batch_size=1)
 
     def encode_video(
         self,
@@ -228,20 +271,12 @@ class VisionFeatureExtractor:
         frame_drop_fraction: float = 0.0,
         seed: int = 42,
     ) -> tuple[np.ndarray, bool]:
-        frames = read_uniform_video_frames(video_path, count=16)
-        if frame_drop_fraction:
-            frames = drop_video_frames(frames, fraction=frame_drop_fraction, seed=seed)
-        crops: list[np.ndarray] = []
-        detected: list[bool] = []
-        for frame in frames:
-            crop, found = face_cropper.crop_largest(frame)
-            crops.append(crop)
-            detected.append(found)
-        available = vision_modality_available(detected)
+        clip, available = prepare_video_clip(
+            video_path,
+            face_cropper=face_cropper,
+            frame_drop_fraction=frame_drop_fraction,
+            seed=seed,
+        )
         if not available:
             return np.zeros((1, self.output_dim), dtype=np.float32), False
-        resized = []
-        for crop in crops:
-            image = Image.fromarray(crop).resize((112, 112))
-            resized.append(np.asarray(image))
-        return self.encode_frames(np.stack(resized)), True
+        return self.encode_frames(clip), True
