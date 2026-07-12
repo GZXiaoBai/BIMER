@@ -1,8 +1,11 @@
 import argparse
+import json
 
 import bimer.cli as cli
+import numpy as np
 import pytest
 from bimer.cli import build_parser
+from bimer.feature_store import FeatureShard, FeatureStore
 from bimer.schema import UtteranceRecord
 
 
@@ -33,6 +36,7 @@ def test_cli_exposes_all_reproducible_workflow_commands():
         "asr-manifest",
         "validate",
         "extract-features",
+        "verify-features",
         "train",
         "evaluate",
         "analyze",
@@ -244,6 +248,55 @@ def test_invalid_range_requests_fail_before_model_construction(
 
     with pytest.raises((ValueError, SystemExit)):
         cli.main(args)
+
+
+def test_verify_features_command_prints_json_and_writes_completion(
+    tmp_path, monkeypatch, capsys
+):
+    records = make_cli_records(32)
+    store = FeatureStore(tmp_path / "features")
+    for shard_index, chunk in enumerate((records[:16], records[16:])):
+        rows = len(chunk)
+        store.write(
+            "emotiontalk",
+            "train",
+            shard_index,
+            FeatureShard(
+                sample_ids=np.asarray([record.sample_id for record in chunk]),
+                text=np.ones((rows, 768), dtype=np.float32),
+                audio=np.ones((rows, 1024), dtype=np.float32),
+                vision=np.ones((rows, 512), dtype=np.float32),
+                modality_mask=np.ones((rows, 3), dtype=np.bool_),
+            ),
+        )
+    monkeypatch.setattr(cli, "read_manifest", lambda _path: records)
+
+    result = cli.main(
+        [
+            "verify-features",
+            "--manifest",
+            str(tmp_path / "manifest.jsonl"),
+            "--features",
+            str(store.root),
+            "--dataset",
+            "emotiontalk",
+            "--split",
+            "train",
+            "--shard-size",
+            "16",
+            "--start-shard",
+            "0",
+            "--end-shard",
+            "2",
+            "--write-completion",
+        ]
+    )
+
+    assert result == 0
+    assert json.loads(capsys.readouterr().out)["is_valid"] is True
+    assert (
+        store.root / "ranges" / "range-00000-00002.json"
+    ).is_file()
 
 
 def test_serial_feature_mode_remains_default():

@@ -28,6 +28,7 @@ from .feature_extractors import (
     YuNetFaceCropper,
 )
 from .feature_store import FeatureStore
+from .feature_verification import verify_feature_range, write_range_completion
 from .inference import (
     DialogueAnalyzer,
     FasterWhisperTranscriber,
@@ -84,6 +85,18 @@ def build_parser() -> argparse.ArgumentParser:
     validate = commands.add_parser("validate")
     validate.add_argument("--manifest", required=True)
     validate.add_argument("--official-counts", action="store_true")
+
+    verify_features = commands.add_parser("verify-features")
+    verify_features.add_argument("--manifest", required=True)
+    verify_features.add_argument("--features", required=True)
+    verify_features.add_argument(
+        "--dataset", choices=["meld", "emotiontalk"], required=True
+    )
+    verify_features.add_argument("--split", required=True)
+    verify_features.add_argument("--shard-size", type=int, required=True)
+    verify_features.add_argument("--start-shard", type=int)
+    verify_features.add_argument("--end-shard", type=int)
+    verify_features.add_argument("--write-completion", action="store_true")
 
     extract = commands.add_parser("extract-features")
     extract.add_argument("--manifest", required=True)
@@ -248,6 +261,31 @@ def main(argv: list[str] | None = None) -> int:
             "cross_split_media": report.cross_split_media,
         }, ensure_ascii=False, indent=2))
         return 0 if report.is_valid else 1
+
+    if args.command == "verify-features":
+        group = [
+            record
+            for record in read_manifest(args.manifest)
+            if record.dataset == args.dataset
+            and str(record.split) == args.split
+        ]
+        selected, resolved = slice_shard_range(
+            group,
+            args.shard_size,
+            args.start_shard,
+            args.end_shard,
+        )
+        result = verify_feature_range(
+            selected,
+            FeatureStore(args.features),
+            shard_size=args.shard_size,
+            shard_index_offset=resolved.start,
+            total_shards=resolved.total_shards,
+        )
+        if args.write_completion:
+            write_range_completion(result, args.features)
+        print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+        return 0
 
     if args.command == "extract-features":
         range_requested = (
