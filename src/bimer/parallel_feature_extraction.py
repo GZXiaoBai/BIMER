@@ -509,7 +509,7 @@ class ParallelFeatureExtractionRunner:
         self.audio_executor_factory = audio_executor_factory
         self.vision_executor_factory = vision_executor_factory
 
-    def _run_text_then_audio(
+    def _run_text(
         self,
         records: Sequence[UtteranceRecord],
         completed_shards: set[int],
@@ -525,10 +525,35 @@ class ParallelFeatureExtractionRunner:
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+
+    def _prepare_audio_extractor(
+        self,
+        records: Sequence[UtteranceRecord],
+        completed_shards: set[int],
+    ) -> object | None:
+        store = ModalityStore(self.staging_root, "audio", 1024)
+        pending = _pending_shards(
+            records,
+            store,
+            shard_size=self.config.shard_size,
+            completed_shards=completed_shards,
+        )
+        if not pending:
+            return None
+        return self.audio_extractor_factory()
+
+    def _run_audio(
+        self,
+        records: Sequence[UtteranceRecord],
+        completed_shards: set[int],
+        extractor: object | None,
+    ) -> None:
+        if extractor is None:
+            return
         extract_audio_stage(
             records,
             self.staging_root,
-            self.audio_extractor_factory,
+            lambda: extractor,
             waveform_loader=self.waveform_loader,
             shard_size=self.config.shard_size,
             batch_size=self.config.audio_batch_size,
@@ -615,17 +640,23 @@ class ParallelFeatureExtractionRunner:
             1 for _ in record_shards(records, self.config.shard_size)
         )
         if len(completed_shards) != shard_count:
+            # CUDA model construction is serialized on the calling thread.
+            # Initializing Hugging Face and torchvision models concurrently
+            # from separate threads can deadlock before either branch reports
+            # progress on Kaggle's dual-T4 runtime.
+            self._run_text(records, completed_shards)
+            audio_extractor = self._prepare_audio_extractor(
+                records, completed_shards
+            )
             with ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix="bimer-vision-gpu"
             ) as executor:
                 gpu1 = executor.submit(
                     self._run_vision, records, completed_shards
                 )
-                # Keep Hugging Face text/audio model construction on the
-                # calling thread. XLS-R can deadlock when CUDA is initialized
-                # from a worker thread, while the independent vision branch
-                # still overlaps on the second GPU.
-                self._run_text_then_audio(records, completed_shards)
+                self._run_audio(
+                    records, completed_shards, audio_extractor
+                )
                 gpu1.result()
         return self._merge_all(records, final_store)
 

@@ -298,7 +298,15 @@ def test_parallel_runner_overlaps_branches_and_merges_after_both(tmp_path):
     lock = threading.Lock()
 
     class ProbeRunner(ParallelFeatureExtractionRunner):
-        def _run_text_then_audio(self, records, completed_shards):
+        def _run_text(self, records, completed_shards):
+            del records, completed_shards
+
+        def _prepare_audio_extractor(self, records, completed_shards):
+            del records, completed_shards
+            return object()
+
+        def _run_audio(self, records, completed_shards, extractor):
+            del extractor
             del records, completed_shards
             barrier.wait(timeout=2)
             with lock:
@@ -329,6 +337,47 @@ def test_parallel_runner_overlaps_branches_and_merges_after_both(tmp_path):
     assert runner.run(make_records(2), FeatureStore(tmp_path / "final")) == []
 
 
+def test_parallel_runner_initializes_gpu0_models_before_starting_vision(
+    tmp_path,
+):
+    initialization_order = []
+
+    class ProbeRunner(ParallelFeatureExtractionRunner):
+        def _run_text(self, records, completed_shards):
+            del records, completed_shards
+            initialization_order.append("text")
+
+        def _prepare_audio_extractor(self, records, completed_shards):
+            del records, completed_shards
+            initialization_order.append("audio")
+            return object()
+
+        def _run_audio(self, records, completed_shards, extractor):
+            del records, completed_shards, extractor
+
+        def _run_vision(self, records, completed_shards):
+            del records, completed_shards
+            assert initialization_order == ["text", "audio"]
+
+        def _merge_all(self, records, final_store):
+            del records, final_store
+            return []
+
+    runner = ProbeRunner(
+        staging_root=tmp_path,
+        config=ParallelFeatureExtractionConfig(shard_size=2),
+        text_extractor_factory=MustNotConstruct(),
+        audio_extractor_factory=MustNotConstruct(),
+        vision_extractor_factory=MustNotConstruct(),
+        waveform_loader=lambda _path: np.ones(2, dtype=np.float32),
+        prepared_loader=lambda _path: (np.ones((16, 4, 4, 3)), True),
+        audio_executor_factory=ThreadPoolExecutor,
+        vision_executor_factory=ThreadPoolExecutor,
+    )
+
+    assert runner.run(make_records(2), FeatureStore(tmp_path / "final")) == []
+
+
 def test_parallel_runner_keeps_text_audio_on_calling_thread(tmp_path):
     calling_thread = threading.get_ident()
     vision_started = threading.Event()
@@ -336,9 +385,18 @@ def test_parallel_runner_keeps_text_audio_on_calling_thread(tmp_path):
     observed = {}
 
     class ProbeRunner(ParallelFeatureExtractionRunner):
-        def _run_text_then_audio(self, records, completed_shards):
+        def _run_text(self, records, completed_shards):
             del records, completed_shards
-            observed["text_audio_thread"] = threading.get_ident()
+            observed["text_thread"] = threading.get_ident()
+
+        def _prepare_audio_extractor(self, records, completed_shards):
+            del records, completed_shards
+            observed["audio_init_thread"] = threading.get_ident()
+            return object()
+
+        def _run_audio(self, records, completed_shards, extractor):
+            del records, completed_shards, extractor
+            observed["audio_thread"] = threading.get_ident()
             assert vision_started.wait(timeout=2)
             release_vision.set()
 
@@ -365,7 +423,9 @@ def test_parallel_runner_keeps_text_audio_on_calling_thread(tmp_path):
     )
 
     assert runner.run(make_records(2), FeatureStore(tmp_path / "final")) == []
-    assert observed["text_audio_thread"] == calling_thread
+    assert observed["text_thread"] == calling_thread
+    assert observed["audio_init_thread"] == calling_thread
+    assert observed["audio_thread"] == calling_thread
     assert observed["vision_thread"] != calling_thread
 
 
@@ -373,7 +433,15 @@ def test_parallel_runner_does_not_merge_after_branch_failure(tmp_path):
     class FailingRunner(ParallelFeatureExtractionRunner):
         merge_calls = 0
 
-        def _run_text_then_audio(self, records, completed_shards):
+        def _run_text(self, records, completed_shards):
+            del records, completed_shards
+
+        def _prepare_audio_extractor(self, records, completed_shards):
+            del records, completed_shards
+            return object()
+
+        def _run_audio(self, records, completed_shards, extractor):
+            del extractor
             del records, completed_shards
             raise RuntimeError("audio failed")
 
