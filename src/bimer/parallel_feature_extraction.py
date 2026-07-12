@@ -102,10 +102,14 @@ def prefetched_map(
 def record_shards(
     records: Sequence[UtteranceRecord],
     shard_size: int,
+    shard_index_offset: int = 0,
 ) -> Iterator[tuple[int, Sequence[UtteranceRecord], np.ndarray]]:
     if shard_size <= 0:
         raise ValueError("shard_size must be positive")
-    for shard_index, start in enumerate(range(0, len(records), shard_size)):
+    if shard_index_offset < 0:
+        raise ValueError("shard_index_offset must be non-negative")
+    for local_index, start in enumerate(range(0, len(records), shard_size)):
+        shard_index = shard_index_offset + local_index
         chunk = records[start : start + shard_size]
         sample_ids = np.asarray(
             [record.sample_id for record in chunk], dtype=str
@@ -129,6 +133,7 @@ def _pending_shards(
     store: ModalityStore,
     *,
     shard_size: int,
+    shard_index_offset: int,
     completed_shards: set[int] | frozenset[int],
 ) -> list[tuple[int, Sequence[UtteranceRecord], np.ndarray]]:
     group = _dataset_split(records)
@@ -136,7 +141,9 @@ def _pending_shards(
         return []
     dataset, split = group
     pending = []
-    for shard_index, chunk, sample_ids in record_shards(records, shard_size):
+    for shard_index, chunk, sample_ids in record_shards(
+        records, shard_size, shard_index_offset
+    ):
         if shard_index in completed_shards:
             continue
         path = store.path(dataset, split, shard_index)
@@ -207,6 +214,7 @@ def extract_text_stage(
     *,
     shard_size: int,
     batch_size: int,
+    shard_index_offset: int = 0,
     completed_shards: set[int] | frozenset[int] = frozenset(),
 ) -> list[Path]:
     store = ModalityStore(staging_root, "text", 768)
@@ -214,6 +222,7 @@ def extract_text_stage(
         records,
         store,
         shard_size=shard_size,
+        shard_index_offset=shard_index_offset,
         completed_shards=completed_shards,
     )
     if not pending:
@@ -279,6 +288,7 @@ def extract_audio_stage(
     batch_size: int,
     workers: int,
     queue_capacity: int,
+    shard_index_offset: int = 0,
     executor_factory: Callable[..., Executor] = ProcessPoolExecutor,
     completed_shards: set[int] | frozenset[int] = frozenset(),
 ) -> list[Path]:
@@ -287,6 +297,7 @@ def extract_audio_stage(
         records,
         store,
         shard_size=shard_size,
+        shard_index_offset=shard_index_offset,
         completed_shards=completed_shards,
     )
     if not pending:
@@ -383,6 +394,7 @@ def extract_vision_stage(
     batch_size: int,
     workers: int,
     queue_capacity: int,
+    shard_index_offset: int = 0,
     executor_factory: Callable[..., Executor] = ProcessPoolExecutor,
     completed_shards: set[int] | frozenset[int] = frozenset(),
 ) -> list[Path]:
@@ -391,6 +403,7 @@ def extract_vision_stage(
         records,
         store,
         shard_size=shard_size,
+        shard_index_offset=shard_index_offset,
         completed_shards=completed_shards,
     )
     if not pending:
@@ -470,6 +483,7 @@ class ParallelFeatureExtractionConfig:
     audio_workers: int = 4
     vision_workers: int = 4
     queue_capacity: int = 8
+    shard_index_offset: int = 0
 
     def __post_init__(self) -> None:
         for name in (
@@ -483,6 +497,8 @@ class ParallelFeatureExtractionConfig:
         ):
             if getattr(self, name) <= 0:
                 raise ValueError(f"{name} must be positive")
+        if self.shard_index_offset < 0:
+            raise ValueError("shard_index_offset must be non-negative")
 
 
 class ParallelFeatureExtractionRunner:
@@ -520,6 +536,7 @@ class ParallelFeatureExtractionRunner:
             self.text_extractor_factory,
             shard_size=self.config.shard_size,
             batch_size=self.config.text_batch_size,
+            shard_index_offset=self.config.shard_index_offset,
             completed_shards=completed_shards,
         )
         gc.collect()
@@ -536,6 +553,7 @@ class ParallelFeatureExtractionRunner:
             records,
             store,
             shard_size=self.config.shard_size,
+            shard_index_offset=self.config.shard_index_offset,
             completed_shards=completed_shards,
         )
         if not pending:
@@ -559,6 +577,7 @@ class ParallelFeatureExtractionRunner:
             batch_size=self.config.audio_batch_size,
             workers=self.config.audio_workers,
             queue_capacity=self.config.queue_capacity,
+            shard_index_offset=self.config.shard_index_offset,
             executor_factory=self.audio_executor_factory,
             completed_shards=completed_shards,
         )
@@ -577,6 +596,7 @@ class ParallelFeatureExtractionRunner:
             batch_size=self.config.vision_batch_size,
             workers=self.config.vision_workers,
             queue_capacity=self.config.queue_capacity,
+            shard_index_offset=self.config.shard_index_offset,
             executor_factory=self.vision_executor_factory,
             completed_shards=completed_shards,
         )
@@ -592,7 +612,9 @@ class ParallelFeatureExtractionRunner:
         dataset, split = group
         completed = set()
         for shard_index, _, sample_ids in record_shards(
-            records, self.config.shard_size
+            records,
+            self.config.shard_size,
+            self.config.shard_index_offset,
         ):
             if verified_final_shard(
                 final_store,
@@ -623,7 +645,9 @@ class ParallelFeatureExtractionRunner:
                 expected_sample_ids=sample_ids,
             )
             for shard_index, _, sample_ids in record_shards(
-                records, self.config.shard_size
+                records,
+                self.config.shard_size,
+                self.config.shard_index_offset,
             )
         ]
 
@@ -637,7 +661,12 @@ class ParallelFeatureExtractionRunner:
         _dataset_split(records)
         completed_shards = self._completed_final_shards(records, final_store)
         shard_count = sum(
-            1 for _ in record_shards(records, self.config.shard_size)
+            1
+            for _ in record_shards(
+                records,
+                self.config.shard_size,
+                self.config.shard_index_offset,
+            )
         )
         if len(completed_shards) != shard_count:
             # CUDA model construction is serialized on the calling thread.

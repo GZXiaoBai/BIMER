@@ -19,6 +19,7 @@ from bimer.parallel_feature_extraction import (
     extract_text_stage,
     extract_vision_stage,
     prefetched_map,
+    record_shards,
 )
 from bimer.modality_store import ModalityShard, ModalityStore
 from bimer.schema import UtteranceRecord
@@ -113,6 +114,20 @@ def test_encode_adaptive_halves_cuda_oom_batch():
     result = encode_adaptive(encoder, [1, 2, 3], initial_batch_size=8)
     assert encoder.attempts == [8, 4, 2]
     assert result.shape == (3, 3)
+
+
+def test_record_shards_applies_global_offset():
+    shards = list(
+        record_shards(make_records(33), 16, shard_index_offset=120)
+    )
+
+    assert [index for index, _, _ in shards] == [120, 121, 122]
+    assert [len(chunk) for _, chunk, _ in shards] == [16, 16, 1]
+
+
+def test_parallel_config_rejects_negative_shard_offset():
+    with pytest.raises(ValueError, match="shard_index_offset"):
+        ParallelFeatureExtractionConfig(shard_index_offset=-1)
 
 
 def test_encode_adaptive_reraises_non_oom():
