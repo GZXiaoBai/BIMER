@@ -1,8 +1,27 @@
 import argparse
 
 import bimer.cli as cli
+import pytest
 from bimer.cli import build_parser
 from bimer.schema import UtteranceRecord
+
+
+def make_cli_records(count, *, split="train"):
+    return [
+        UtteranceRecord(
+            dataset="emotiontalk",
+            split=split,
+            dialogue_id="d1",
+            utterance_id=index,
+            text=f"line {index}",
+            emotion="neutral",
+            language="zh",
+            start_seconds=float(index),
+            end_seconds=float(index + 1),
+            video_path=f"{index}.mp4",
+        )
+        for index in range(count)
+    ]
 
 
 def test_cli_exposes_all_reproducible_workflow_commands():
@@ -115,6 +134,116 @@ def test_parallel_feature_defaults_target_dual_t4():
         args.vision_workers,
         args.queue_capacity,
     ) == (4, 4, 8)
+
+
+def test_extract_parser_accepts_shard_range():
+    args = build_parser().parse_args(
+        [
+            "extract-features",
+            "--manifest",
+            "manifest.jsonl",
+            "--features",
+            "features",
+            "--yunet-model",
+            "yunet.onnx",
+            "--dataset",
+            "emotiontalk",
+            "--split",
+            "train",
+            "--mode",
+            "parallel",
+            "--start-shard",
+            "120",
+            "--end-shard",
+            "240",
+        ]
+    )
+
+    assert (args.start_shard, args.end_shard) == (120, 240)
+
+
+def test_parallel_range_routes_official_slice_and_offset(tmp_path, monkeypatch):
+    records = make_cli_records(40)
+    captured = {}
+
+    class FakeRunner:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def run(self, selected, store):
+            captured["records"] = selected
+            captured["store"] = store
+            return []
+
+    monkeypatch.setattr(cli, "read_manifest", lambda _path: records)
+    monkeypatch.setattr(cli.torch.cuda, "device_count", lambda: 2)
+    monkeypatch.setattr(cli, "ParallelFeatureExtractionRunner", FakeRunner)
+
+    result = cli.main(
+        [
+            "extract-features",
+            "--manifest",
+            str(tmp_path / "manifest.jsonl"),
+            "--features",
+            str(tmp_path / "features"),
+            "--yunet-model",
+            str(tmp_path / "yunet.onnx"),
+            "--dataset",
+            "emotiontalk",
+            "--split",
+            "train",
+            "--mode",
+            "parallel",
+            "--shard-size",
+            "16",
+            "--start-shard",
+            "1",
+            "--end-shard",
+            "3",
+        ]
+    )
+
+    assert result == 0
+    assert captured["records"] == records[16:40]
+    assert captured["config"].shard_index_offset == 1
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--mode", "serial", "--start-shard", "0", "--end-shard", "1"],
+        ["--mode", "parallel", "--start-shard", "0"],
+    ],
+)
+def test_invalid_range_requests_fail_before_model_construction(
+    tmp_path, monkeypatch, extra
+):
+    monkeypatch.setattr(cli, "read_manifest", lambda _path: make_cli_records(16))
+    monkeypatch.setattr(cli.torch.cuda, "device_count", lambda: 2)
+    monkeypatch.setattr(
+        cli,
+        "TextFeatureExtractor",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("model must not be constructed")
+        ),
+    )
+    args = [
+        "extract-features",
+        "--manifest",
+        str(tmp_path / "manifest.jsonl"),
+        "--features",
+        str(tmp_path / "features"),
+        "--yunet-model",
+        str(tmp_path / "yunet.onnx"),
+        "--dataset",
+        "emotiontalk",
+        "--split",
+        "train",
+        *extra,
+    ]
+
+    with pytest.raises((ValueError, SystemExit)):
+        cli.main(args)
 
 
 def test_serial_feature_mode_remains_default():

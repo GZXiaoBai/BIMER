@@ -43,6 +43,7 @@ from .parallel_feature_extraction import (
     prepare_video_worker,
 )
 from .robustness import add_noise_at_snr
+from .shard_ranges import slice_shard_range
 from .validation import validate_dataset_records
 
 
@@ -106,6 +107,8 @@ def build_parser() -> argparse.ArgumentParser:
     extract.add_argument("--vision-workers", type=int, default=4)
     extract.add_argument("--queue-capacity", type=int, default=8)
     extract.add_argument("--staging")
+    extract.add_argument("--start-shard", type=int)
+    extract.add_argument("--end-shard", type=int)
 
     train = commands.add_parser("train")
     train.add_argument("--manifest", required=True)
@@ -247,6 +250,20 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if report.is_valid else 1
 
     if args.command == "extract-features":
+        range_requested = (
+            args.start_shard is not None or args.end_shard is not None
+        )
+        if range_requested:
+            if args.start_shard is None or args.end_shard is None:
+                raise ValueError(
+                    "start-shard and end-shard must be supplied together"
+                )
+            if args.mode != "parallel":
+                raise ValueError("shard ranges require parallel mode")
+            if not args.dataset or not args.split:
+                raise ValueError(
+                    "shard ranges require explicit dataset and split"
+                )
         records = [
             record
             for record in read_manifest(args.manifest)
@@ -265,15 +282,6 @@ def main(argv: list[str] | None = None) -> int:
                     "parallel extraction requested unavailable CUDA devices: "
                     f"{args.text_audio_device}, {args.vision_device}"
                 )
-            config = ParallelFeatureExtractionConfig(
-                shard_size=args.shard_size,
-                text_batch_size=args.text_batch_size,
-                audio_batch_size=args.audio_batch_size,
-                vision_batch_size=args.vision_batch_size,
-                audio_workers=args.audio_workers,
-                vision_workers=args.vision_workers,
-                queue_capacity=args.queue_capacity,
-            )
             spawn_context = multiprocessing.get_context("spawn")
             audio_executor_factory = partial(
                 ProcessPoolExecutor,
@@ -284,27 +292,6 @@ def main(argv: list[str] | None = None) -> int:
                 initializer=initialize_vision_worker,
                 initargs=(Path(args.yunet_model), args.frame_drop, 42),
                 mp_context=spawn_context,
-            )
-            runner = ParallelFeatureExtractionRunner(
-                staging_root=Path(args.staging or args.features),
-                config=config,
-                text_extractor_factory=lambda: TextFeatureExtractor(
-                    device=args.text_audio_device
-                ),
-                audio_extractor_factory=lambda: AudioFeatureExtractor(
-                    device=args.text_audio_device
-                ),
-                vision_extractor_factory=lambda: VisionFeatureExtractor(
-                    device=args.vision_device
-                ),
-                waveform_loader=partial(
-                    load_waveform_worker,
-                    audio_snr=args.audio_snr,
-                    seed=42,
-                ),
-                prepared_loader=prepare_video_worker,
-                audio_executor_factory=audio_executor_factory,
-                vision_executor_factory=vision_executor_factory,
             )
             final_store = FeatureStore(args.features)
             for dataset in sorted({record.dataset for record in records}):
@@ -321,7 +308,44 @@ def main(argv: list[str] | None = None) -> int:
                         if record.dataset == dataset
                         and str(record.split) == split
                     ]
-                    runner.run(group, final_store)
+                    selected, resolved = slice_shard_range(
+                        group,
+                        args.shard_size,
+                        args.start_shard,
+                        args.end_shard,
+                    )
+                    config = ParallelFeatureExtractionConfig(
+                        shard_size=args.shard_size,
+                        text_batch_size=args.text_batch_size,
+                        audio_batch_size=args.audio_batch_size,
+                        vision_batch_size=args.vision_batch_size,
+                        audio_workers=args.audio_workers,
+                        vision_workers=args.vision_workers,
+                        queue_capacity=args.queue_capacity,
+                        shard_index_offset=resolved.start,
+                    )
+                    runner = ParallelFeatureExtractionRunner(
+                        staging_root=Path(args.staging or args.features),
+                        config=config,
+                        text_extractor_factory=lambda: TextFeatureExtractor(
+                            device=args.text_audio_device
+                        ),
+                        audio_extractor_factory=lambda: AudioFeatureExtractor(
+                            device=args.text_audio_device
+                        ),
+                        vision_extractor_factory=lambda: VisionFeatureExtractor(
+                            device=args.vision_device
+                        ),
+                        waveform_loader=partial(
+                            load_waveform_worker,
+                            audio_snr=args.audio_snr,
+                            seed=42,
+                        ),
+                        prepared_loader=prepare_video_worker,
+                        audio_executor_factory=audio_executor_factory,
+                        vision_executor_factory=vision_executor_factory,
+                    )
+                    runner.run(selected, final_store)
             return 0
 
         device = resolve_device(args.device)
