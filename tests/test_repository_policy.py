@@ -15,8 +15,9 @@ def test_public_tree_rejects_private_paths_large_files_and_secrets(
     private_data.parent.mkdir(parents=True)
     private_data.write_text("{}\n", encoding="utf-8")
     secret = tmp_path / "config.py"
+    fake_token = "hf" + "_" + "abcdefghijklmnopqrstuvwxyz123456"
     secret.write_text(
-        'TOKEN = "hf_abcdefghijklmnopqrstuvwxyz123456"\n',
+        f'TOKEN = "{fake_token}"\n',
         encoding="utf-8",
     )
     large = tmp_path / "model.bin"
