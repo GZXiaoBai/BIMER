@@ -39,7 +39,7 @@ jobs:
           src/bimer/calibration.py
       - name: Tests and coverage
         run: >-
-          uv run pytest
+          uv run python -m pytest
           --cov=bimer
           --cov-report=term-missing
           --cov-fail-under=80
