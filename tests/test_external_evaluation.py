@@ -5,10 +5,9 @@ from bimer.external_evaluation import (
     ExternalVideo,
     annotation_agreement,
     evaluate_external_predictions,
-    validate_external_video_plan,
     v3_external_acceptance,
+    validate_external_video_plan,
 )
-
 
 CONDITIONS = (
     "normal_face",
@@ -79,16 +78,12 @@ def test_external_evaluation_and_v3_acceptance_use_video_clusters():
     v2 = {
         "weighted_f1": 0.60,
         "ece": 0.10,
-        "by_condition": {
-            condition: {"weighted_f1": 0.50} for condition in CONDITIONS
-        },
+        "by_condition": {condition: {"weighted_f1": 0.50} for condition in CONDITIONS},
     }
     v3 = {
         "weighted_f1": 0.60,
         "ece": 0.09,
-        "by_condition": {
-            condition: {"weighted_f1": 0.52} for condition in CONDITIONS
-        },
+        "by_condition": {condition: {"weighted_f1": 0.52} for condition in CONDITIONS},
     }
     acceptance = v3_external_acceptance(v2, v3)
     assert acceptance["accepted"] is True

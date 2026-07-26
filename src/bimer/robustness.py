@@ -9,9 +9,7 @@ import numpy as np
 
 
 def stable_item_seed(base_seed: int, identifier: str) -> int:
-    digest = hashlib.sha256(
-        f"{base_seed}\0{identifier}".encode("utf-8")
-    ).digest()
+    digest = hashlib.sha256(f"{base_seed}\0{identifier}".encode("utf-8")).digest()
     return int.from_bytes(digest[:4], "little", signed=False)
 
 
@@ -24,9 +22,7 @@ def write_condition_provenance(
     if path.is_file():
         existing = json.loads(path.read_text(encoding="utf-8"))
         if existing != expected:
-            raise ValueError(
-                f"{path} belongs to a different robustness condition"
-            )
+            raise ValueError(f"{path} belongs to a different robustness condition")
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")

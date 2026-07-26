@@ -1,10 +1,10 @@
 import argparse
 import json
-from pathlib import Path
 
-import bimer.cli as cli
 import numpy as np
 import pytest
+
+import bimer.cli as cli
 from bimer.cli import build_parser
 from bimer.feature_store import FeatureShard, FeatureStore
 from bimer.integrity import write_sha256_manifest
@@ -42,10 +42,10 @@ def test_cli_exposes_all_reproducible_workflow_commands():
         "extract-features",
         "verify-features",
         "feature-stats",
-            "overfit-smoke",
-            "sample-corruption-manifest",
-            "attach-quality",
-            "train",
+        "overfit-smoke",
+        "sample-corruption-manifest",
+        "attach-quality",
+        "train",
         "evaluate",
         "analyze",
         "serve",
@@ -53,9 +53,7 @@ def test_cli_exposes_all_reproducible_workflow_commands():
         "verify-evidence",
     }
     subparsers = next(
-        action
-        for action in parser._actions
-        if isinstance(action, argparse._SubParsersAction)
+        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
     )
     assert set(subparsers.choices) == expected
 
@@ -191,9 +189,7 @@ def test_official_emotiontalk_command_requires_published_csv_inputs():
     assert args.transcriptions_csv == "transcription.csv"
 
 
-def test_asr_command_filters_dataset_split_and_writes_incrementally(
-    tmp_path, monkeypatch
-):
+def test_asr_command_filters_dataset_split_and_writes_incrementally(tmp_path, monkeypatch):
     records = [
         *make_cli_records(2, split="train"),
         *make_cli_records(3, split="test"),
@@ -242,9 +238,7 @@ def test_asr_command_filters_dataset_split_and_writes_incrementally(
     assert captured["output"] == str(tmp_path / "asr-test.jsonl")
 
 
-def test_asr_command_can_keep_original_text_and_write_error_log(
-    tmp_path, monkeypatch
-):
+def test_asr_command_can_keep_original_text_and_write_error_log(tmp_path, monkeypatch):
     records = make_cli_records(1, split="test")
     captured = {}
 
@@ -447,9 +441,7 @@ def test_analyze_and_serve_accept_a_single_deployment_manifest():
     assert doctor.offline is True
 
 
-def test_verify_evidence_command_returns_nonzero_after_artifact_changes(
-    tmp_path, capsys
-):
+def test_verify_evidence_command_returns_nonzero_after_artifact_changes(tmp_path, capsys):
     artifact = tmp_path / "result.json"
     artifact.write_text('{"ok": true}\n', encoding="utf-8")
     manifest = tmp_path / "evidence.sha256"
@@ -459,21 +451,15 @@ def test_verify_evidence_command_returns_nonzero_after_artifact_changes(
         inputs=[artifact],
     )
 
-    assert cli.main(
-        ["verify-evidence", "--manifest", str(manifest), "--root", str(tmp_path)]
-    ) == 0
+    assert cli.main(["verify-evidence", "--manifest", str(manifest), "--root", str(tmp_path)]) == 0
     assert json.loads(capsys.readouterr().out)["ok"] is True
 
     artifact.write_text('{"ok": false}\n', encoding="utf-8")
-    assert cli.main(
-        ["verify-evidence", "--manifest", str(manifest), "--root", str(tmp_path)]
-    ) == 1
+    assert cli.main(["verify-evidence", "--manifest", str(manifest), "--root", str(tmp_path)]) == 1
     assert json.loads(capsys.readouterr().out)["mismatched"] == ["result.json"]
 
 
-def test_doctor_reports_missing_deployment_artifacts_without_loading_model(
-    tmp_path, capsys
-):
+def test_doctor_reports_missing_deployment_artifacts_without_loading_model(tmp_path, capsys):
     deployment = tmp_path / "deployment.json"
     deployment.write_text(
         json.dumps(
@@ -725,17 +711,13 @@ def test_parallel_range_routes_official_slice_and_offset(tmp_path, monkeypatch):
         ["--mode", "parallel", "--start-shard", "0"],
     ],
 )
-def test_invalid_range_requests_fail_before_model_construction(
-    tmp_path, monkeypatch, extra
-):
+def test_invalid_range_requests_fail_before_model_construction(tmp_path, monkeypatch, extra):
     monkeypatch.setattr(cli, "read_manifest", lambda _path: make_cli_records(16))
     monkeypatch.setattr(cli.torch.cuda, "device_count", lambda: 2)
     monkeypatch.setattr(
         cli,
         "TextFeatureExtractor",
-        lambda **_kwargs: (_ for _ in ()).throw(
-            AssertionError("model must not be constructed")
-        ),
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("model must not be constructed")),
     )
     args = [
         "extract-features",
@@ -756,9 +738,7 @@ def test_invalid_range_requests_fail_before_model_construction(
         cli.main(args)
 
 
-def test_verify_features_command_prints_json_and_writes_completion(
-    tmp_path, monkeypatch, capsys
-):
+def test_verify_features_command_prints_json_and_writes_completion(tmp_path, monkeypatch, capsys):
     records = make_cli_records(32)
     store = FeatureStore(tmp_path / "features")
     for shard_index, chunk in enumerate((records[:16], records[16:])):
@@ -800,9 +780,7 @@ def test_verify_features_command_prints_json_and_writes_completion(
 
     assert result == 0
     assert json.loads(capsys.readouterr().out)["is_valid"] is True
-    assert (
-        store.root / "ranges" / "range-00000-00002.json"
-    ).is_file()
+    assert (store.root / "ranges" / "range-00000-00002.json").is_file()
 
 
 def test_serial_feature_mode_remains_default():
@@ -887,23 +865,11 @@ def test_parallel_feature_command_routes_to_parallel_runner(tmp_path, monkeypatc
     assert captured["config"].shard_size == 16
     assert captured["staging_root"] == tmp_path / "staging"
     assert captured["records"] == [record]
-    assert (
-        captured["audio_executor_factory"]
-        .keywords["mp_context"]
-        .get_start_method()
-        == "spawn"
-    )
-    assert (
-        captured["vision_executor_factory"]
-        .keywords["mp_context"]
-        .get_start_method()
-        == "spawn"
-    )
+    assert captured["audio_executor_factory"].keywords["mp_context"].get_start_method() == "spawn"
+    assert captured["vision_executor_factory"].keywords["mp_context"].get_start_method() == "spawn"
 
 
-def test_parallel_audio_replacement_does_not_require_unused_vision_gpu(
-    tmp_path, monkeypatch
-):
+def test_parallel_audio_replacement_does_not_require_unused_vision_gpu(tmp_path, monkeypatch):
     records = make_cli_records(2, split="test")
     captured = {}
 
@@ -923,9 +889,7 @@ def test_parallel_audio_replacement_does_not_require_unused_vision_gpu(
     monkeypatch.setattr(cli, "read_manifest", lambda _path: records)
     monkeypatch.setattr(cli.torch.cuda, "device_count", lambda: 1)
     monkeypatch.setattr(cli, "ParallelFeatureExtractionRunner", FakeRunner)
-    monkeypatch.setattr(
-        cli, "seed_staging_from_base_shard", fake_seed, raising=False
-    )
+    monkeypatch.setattr(cli, "seed_staging_from_base_shard", fake_seed, raising=False)
     result = cli.main(
         [
             "extract-features",
@@ -958,9 +922,7 @@ def test_parallel_audio_replacement_does_not_require_unused_vision_gpu(
     assert len(captured["seed_calls"]) == 1
     assert captured["seed_calls"][0]["base_store"].root == tmp_path / "clean"
     assert captured["seed_calls"][0]["recompute_modality"] == "audio"
-    provenance_path = (
-        tmp_path / "snr10" / "emotiontalk" / "test" / "condition.json"
-    )
+    provenance_path = tmp_path / "snr10" / "emotiontalk" / "test" / "condition.json"
     provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
     assert provenance["condition"] == "audio_snr_10db"
     assert provenance["dataset"] == "emotiontalk"

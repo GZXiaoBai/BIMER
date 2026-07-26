@@ -5,11 +5,10 @@ import argparse
 import csv
 import json
 import math
+import sys
 from pathlib import Path
 from statistics import mean, stdev
-import sys
 from typing import Any
-
 
 SEEDS = (42, 123, 2026)
 DATASETS = ("meld", "emotiontalk")
@@ -42,14 +41,9 @@ def _round(value: float) -> float:
 
 
 def _result_path(root: Path, scope: str, variant: str, seed: int) -> Path:
-    matches = sorted(
-        (root / scope / variant).glob(f"**/seed-{seed}/results.json")
-    )
+    matches = sorted((root / scope / variant).glob(f"**/seed-{seed}/results.json"))
     if len(matches) != 1:
-        raise ValueError(
-            f"missing results for {scope}/{variant}/seed-{seed}: "
-            f"found {len(matches)}"
-        )
+        raise ValueError(f"missing results for {scope}/{variant}/seed-{seed}: found {len(matches)}")
     return matches[0]
 
 
@@ -102,9 +96,7 @@ def _per_seed_rows(
                     "dataset": dataset,
                     **{name: _round(metrics[name]) for name in METRICS},
                     "best_epoch": payload["history"]["best_epoch"],
-                    "best_validation_score": _round(
-                        payload["history"]["best_score"]
-                    ),
+                    "best_validation_score": _round(payload["history"]["best_score"]),
                     "result_path": str(path),
                 }
                 if not all(math.isfinite(row[name]) for name in METRICS):
@@ -128,16 +120,9 @@ def _per_seed_rows(
                     "variant": variant,
                     "seed": seed,
                     "dataset": "bilingual_average",
-                    **{
-                        name: _round(
-                            mean(row[name] for row in dataset_rows)
-                        )
-                        for name in METRICS
-                    },
+                    **{name: _round(mean(row[name] for row in dataset_rows)) for name in METRICS},
                     "best_epoch": payload["history"]["best_epoch"],
-                    "best_validation_score": _round(
-                        payload["history"]["best_score"]
-                    ),
+                    "best_validation_score": _round(payload["history"]["best_score"]),
                     "result_path": str(path),
                 }
             )
@@ -152,29 +137,21 @@ def _summary_rows(
     for variant in variants:
         for dataset in (*DATASETS, "bilingual_average"):
             selected = [
-                row
-                for row in rows
-                if row["variant"] == variant and row["dataset"] == dataset
+                row for row in rows if row["variant"] == variant and row["dataset"] == dataset
             ]
             if len(selected) != len(SEEDS):
-                raise ValueError(
-                    f"missing results for summary {variant}/{dataset}"
-                )
+                raise ValueError(f"missing results for summary {variant}/{dataset}")
             summary.append(
                 {
                     "variant": variant,
                     "dataset": dataset,
                     "seed_count": len(selected),
                     **{
-                        f"{metric}_mean": _round(
-                            mean(row[metric] for row in selected)
-                        )
+                        f"{metric}_mean": _round(mean(row[metric] for row in selected))
                         for metric in METRICS
                     },
                     **{
-                        f"{metric}_std": _round(
-                            stdev(row[metric] for row in selected)
-                        )
+                        f"{metric}_std": _round(stdev(row[metric] for row in selected))
                         for metric in METRICS
                     },
                 }
@@ -185,12 +162,7 @@ def _summary_rows(
 def _per_class_summary(
     rows: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    keys = sorted(
-        {
-            (row["scope"], row["variant"], row["dataset"], row["label"])
-            for row in rows
-        }
-    )
+    keys = sorted({(row["scope"], row["variant"], row["dataset"], row["label"]) for row in rows})
     summary: list[dict[str, Any]] = []
     for scope, variant, dataset, label in keys:
         values = [
@@ -222,16 +194,11 @@ def _add_ablation_deltas(
     ablation_summary: list[dict[str, Any]],
     formal_summary: list[dict[str, Any]],
 ) -> None:
-    full = {
-        row["dataset"]: row
-        for row in formal_summary
-        if row["variant"] == "quality_lagf"
-    }
+    full = {row["dataset"]: row for row in formal_summary if row["variant"] == "quality_lagf"}
     for row in ablation_summary:
         for metric in METRICS:
             row[f"{metric}_delta_vs_full"] = _round(
-                row[f"{metric}_mean"]
-                - full[row["dataset"]][f"{metric}_mean"]
+                row[f"{metric}_mean"] - full[row["dataset"]][f"{metric}_mean"]
             )
 
 
@@ -258,9 +225,7 @@ def summarize(root: Path, output: Path) -> dict[str, Any]:
     formal_summary = _summary_rows(formal_rows, FORMAL_VARIANTS)
     ablation_summary = _summary_rows(ablation_rows, ABLATIONS)
     _add_ablation_deltas(ablation_summary, formal_summary)
-    per_class_summary = _per_class_summary(
-        formal_per_class + ablation_per_class
-    )
+    per_class_summary = _per_class_summary(formal_per_class + ablation_per_class)
     output.mkdir(parents=True, exist_ok=True)
     _write_csv(output / "formal_per_seed.csv", formal_rows)
     _write_csv(output / "formal_summary.csv", formal_summary)
@@ -271,9 +236,7 @@ def summarize(root: Path, output: Path) -> dict[str, Any]:
         "methodology": {
             "seeds": list(SEEDS),
             "standard_deviation_ddof": 1,
-            "bilingual_average": (
-                "Arithmetic mean of MELD and EmotionTalk metrics per seed"
-            ),
+            "bilingual_average": ("Arithmetic mean of MELD and EmotionTalk metrics per seed"),
             "ablation_delta": "Ablation mean minus full-model mean",
         },
         "validation": {

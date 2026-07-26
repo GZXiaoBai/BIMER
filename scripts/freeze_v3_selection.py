@@ -17,14 +17,13 @@ def main() -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     loss_evidence = json.loads(Path(args.loss_decision).read_text(encoding="utf-8"))
-    ranking_evidence = json.loads(
-        Path(args.ranking_decision).read_text(encoding="utf-8")
-    )
+    ranking_evidence = json.loads(Path(args.ranking_decision).read_text(encoding="utf-8"))
     if args.classification_loss != loss_evidence.get("selected"):
         raise SystemExit("classification loss is not the validation-screen selection")
-    if float(args.gate_ranking_weight) != float(
-        ranking_evidence.get("selected", 0.0)
-    ) or float(args.gate_ranking_weight) <= 0:
+    if (
+        float(args.gate_ranking_weight) != float(ranking_evidence.get("selected", 0.0))
+        or float(args.gate_ranking_weight) <= 0
+    ):
         raise SystemExit("gate ranking weight did not pass the validation-only screen")
     freeze_v3_selection(
         args.output,

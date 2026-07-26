@@ -97,9 +97,7 @@ class FeatureStore:
                 vision=payload["vision"],
                 modality_mask=payload["modality_mask"],
                 modality_quality=(
-                    payload["modality_quality"]
-                    if "modality_quality" in payload.files
-                    else None
+                    payload["modality_quality"] if "modality_quality" in payload.files else None
                 ),
             )
 

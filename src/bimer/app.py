@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+import time
 import uuid
 from dataclasses import replace
 from html import escape
 from pathlib import Path
 from typing import Any, Sequence
-import time
 
 import matplotlib.pyplot as plt
 
@@ -25,10 +25,7 @@ _COLORS = {
 
 
 def transcript_rows(segments: Sequence[TranscriptSegment]) -> list[list[object]]:
-    return [
-        [segment.start_seconds, segment.end_seconds, segment.text]
-        for segment in segments
-    ]
+    return [[segment.start_seconds, segment.end_seconds, segment.text] for segment in segments]
 
 
 def analysis_rows(result: AnalysisResult) -> list[list[object]]:
@@ -147,7 +144,7 @@ def timeline_html(result: AnalysisResult) -> str:
             f'<button title="{title}" onclick="{script}" '
             f'style="background:{color};color:white;border:0;border-radius:6px;'
             'padding:8px 10px;margin:3px;cursor:pointer">'
-            f'{segment.start_seconds:.1f}s {escape(str(segment.emotion))}</button>'
+            f"{segment.start_seconds:.1f}s {escape(str(segment.emotion))}</button>"
         )
     return (
         '<div aria-label="clickable emotion timeline" style="display:flex;flex-wrap:wrap">'

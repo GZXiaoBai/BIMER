@@ -2,15 +2,14 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import json
-from pathlib import Path
 import shlex
 import subprocess
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
-
 
 SEEDS = (42, 123, 2026)
 DATASETS = ("meld", "emotiontalk")
@@ -33,13 +32,11 @@ class RobustnessCondition:
 MODELS = (
     ModelCandidate(
         "quality_lagf",
-        "artifacts/experiments/v2/formal/quality_lagf/"
-        "quality_lagf/joint/seed-{seed}/best.pt",
+        "artifacts/experiments/v2/formal/quality_lagf/quality_lagf/joint/seed-{seed}/best.pt",
     ),
     ModelCandidate(
         "no_gates",
-        "artifacts/experiments/v2/ablations/no_gates/"
-        "quality_lagf/joint/seed-{seed}/best.pt",
+        "artifacts/experiments/v2/ablations/no_gates/quality_lagf/joint/seed-{seed}/best.pt",
     ),
 )
 CONDITIONS = (
@@ -114,9 +111,7 @@ def _resolved_paths(args: argparse.Namespace) -> dict[str, Path]:
     return {
         "root": root,
         "manifest": (
-            args.manifest.resolve()
-            if args.manifest
-            else root / "data/processed/v2/all.jsonl"
+            args.manifest.resolve() if args.manifest else root / "data/processed/v2/all.jsonl"
         ),
         "whisper_manifest": (
             args.whisper_manifest.resolve()
@@ -134,9 +129,7 @@ def _resolved_paths(args: argparse.Namespace) -> dict[str, Path]:
             else root / "artifacts/features/v2-robustness"
         ),
         "output": (
-            args.output.resolve()
-            if args.output
-            else root / "artifacts/experiments/v2/robustness"
+            args.output.resolve() if args.output else root / "artifacts/experiments/v2/robustness"
         ),
     }
 
@@ -181,18 +174,9 @@ def _command(
     seed: int,
     device: str,
 ) -> list[str]:
-    manifest = (
-        paths["whisper_manifest"]
-        if condition.use_whisper_manifest
-        else paths["manifest"]
-    )
+    manifest = paths["whisper_manifest"] if condition.use_whisper_manifest else paths["manifest"]
     checkpoint = paths["root"] / model.checkpoint_template.format(seed=seed)
-    output = (
-        paths["output"]
-        / model.name
-        / condition.name
-        / f"seed-{seed}.json"
-    )
+    output = paths["output"] / model.name / condition.name / f"seed-{seed}.json"
     command = [
         sys.executable,
         "-m",
@@ -211,10 +195,7 @@ def _command(
     ]
     for modality in condition.missing_modalities:
         command.extend(["--missing", modality])
-    if (
-        condition.name != "standard"
-        and not condition.missing_modalities
-    ):
+    if condition.name != "standard" and not condition.missing_modalities:
         command.extend(["--condition-name", condition.name])
     return command
 
@@ -223,26 +204,17 @@ def _validate_assets(paths: dict[str, Path]) -> None:
     for manifest in (paths["manifest"], paths["whisper_manifest"]):
         if not manifest.is_file():
             raise FileNotFoundError(f"manifest is missing: {manifest}")
-    feature_roots = {
-        _feature_root(paths, condition) for condition in CONDITIONS
-    }
+    feature_roots = {_feature_root(paths, condition) for condition in CONDITIONS}
     for feature_root in feature_roots:
         for dataset in DATASETS:
             split = feature_root / dataset / "test"
             if not split.is_dir():
-                raise FileNotFoundError(
-                    f"feature split is missing: {split}"
-                )
+                raise FileNotFoundError(f"feature split is missing: {split}")
     for model in MODELS:
         for seed in SEEDS:
-            checkpoint = (
-                paths["root"]
-                / model.checkpoint_template.format(seed=seed)
-            )
+            checkpoint = paths["root"] / model.checkpoint_template.format(seed=seed)
             if not checkpoint.is_file():
-                raise FileNotFoundError(
-                    f"checkpoint is missing: {checkpoint}"
-                )
+                raise FileNotFoundError(f"checkpoint is missing: {checkpoint}")
 
 
 def main() -> int:
@@ -265,15 +237,11 @@ def main() -> int:
                 )
                 output = Path(command[command.index("--output") + 1])
                 if _prediction_complete(output):
-                    print(
-                        f"SKIP model={model.name} "
-                        f"condition={condition.name} seed={seed}"
-                    )
+                    print(f"SKIP model={model.name} condition={condition.name} seed={seed}")
                     skip_count += 1
                     continue
                 print(
-                    "RUN "
-                    + shlex.join(command),
+                    "RUN " + shlex.join(command),
                     flush=True,
                 )
                 run_count += 1
@@ -281,10 +249,7 @@ def main() -> int:
                     output.parent.mkdir(parents=True, exist_ok=True)
                     subprocess.run(command, cwd=paths["root"], check=True)
                     if not _prediction_complete(output):
-                        raise RuntimeError(
-                            f"evaluation did not produce complete output: "
-                            f"{output}"
-                        )
+                        raise RuntimeError(f"evaluation did not produce complete output: {output}")
     if not args.dry_run:
         status = paths["output"] / "_status"
         status.mkdir(parents=True, exist_ok=True)
@@ -292,9 +257,7 @@ def main() -> int:
             f"runs={run_count} skipped={skip_count}\n",
             encoding="utf-8",
         )
-    print(
-        f"V2_ROBUSTNESS_EVALUATION runs={run_count} skipped={skip_count}"
-    )
+    print(f"V2_ROBUSTNESS_EVALUATION runs={run_count} skipped={skip_count}")
     return 0
 
 

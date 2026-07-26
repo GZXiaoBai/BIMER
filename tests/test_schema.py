@@ -93,16 +93,12 @@ def test_analysis_result_serializes_probabilities_and_gates():
 
 
 def test_analysis_result_exposes_timestamped_transition_events():
-    first = AnalysisSegment(
-        0.0, 1.0, "hi", "neutral", {"neutral": 0.8}, {"text": 1.0}
-    )
-    second = AnalysisSegment(
-        1.0, 2.0, "great", "joy", {"joy": 0.9}, {"text": 1.0}
-    )
+    first = AnalysisSegment(0.0, 1.0, "hi", "neutral", {"neutral": 0.8}, {"text": 1.0})
+    second = AnalysisSegment(1.0, 2.0, "great", "joy", {"joy": 0.9}, {"text": 1.0})
 
-    event = AnalysisResult(language="en", segments=(first, second)).to_dict()[
-        "transition_events"
-    ][0]
+    event = AnalysisResult(language="en", segments=(first, second)).to_dict()["transition_events"][
+        0
+    ]
 
     assert event == {
         "segment_index": 1,

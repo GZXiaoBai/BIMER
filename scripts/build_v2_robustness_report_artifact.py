@@ -5,11 +5,10 @@ from __future__ import annotations
 
 import argparse
 import csv
-from datetime import datetime, timezone
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-
 
 CONDITION_ORDER = (
     "standard",
@@ -72,11 +71,7 @@ def _comparison(
     condition: str,
     dataset: str = "bilingual_average",
 ) -> dict[str, str]:
-    matches = [
-        row
-        for row in rows
-        if row["condition"] == condition and row["dataset"] == dataset
-    ]
+    matches = [row for row in rows if row["condition"] == condition and row["dataset"] == dataset]
     if len(matches) != 1:
         raise ValueError(f"expected one comparison for {condition}/{dataset}")
     return matches[0]
@@ -142,20 +137,20 @@ def _write_markdown_report(
 
 ## 结论
 
-最终系统采用 `quality_lagf`（质量感知门控模型）。该决定沿用验证集冻结结果，不根据测试集重新调参：验证集双语 weighted-F1 较无门控上下文模型提高 {_pp(decision['validation']['quality_minus_no_gates']):.3f} 个百分点。
+最终系统采用 `quality_lagf`（质量感知门控模型）。该决定沿用验证集冻结结果，不根据测试集重新调参：验证集双语 weighted-F1 较无门控上下文模型提高 {_pp(decision["validation"]["quality_minus_no_gates"]):.3f} 个百分点。
 
-标准测试上两者基本持平：质量模型为 {_number(clean, 'quality_weighted_f1_mean'):.4f}，无门控模型为 {_number(clean, 'no_gates_weighted_f1_mean'):.4f}，差值 {_pp(_number(clean, 'quality_minus_no_gates')):+.3f} 个百分点，配对 95% CI 为 [{_pp(_number(clean, 'ci95_lower')):+.3f}, {_pp(_number(clean, 'ci95_upper')):+.3f}]。
+标准测试上两者基本持平：质量模型为 {_number(clean, "quality_weighted_f1_mean"):.4f}，无门控模型为 {_number(clean, "no_gates_weighted_f1_mean"):.4f}，差值 {_pp(_number(clean, "quality_minus_no_gates")):+.3f} 个百分点，配对 95% CI 为 [{_pp(_number(clean, "ci95_lower")):+.3f}, {_pp(_number(clean, "ci95_upper")):+.3f}]。
 
 ## 被数据支持的改进
 
-- 视频丢帧 25%：质量模型提高 {_pp(_number(video_25, 'quality_minus_no_gates')):+.3f} 个百分点，95% CI [{_pp(_number(video_25, 'ci95_lower')):+.3f}, {_pp(_number(video_25, 'ci95_upper')):+.3f}]。
-- 视频丢帧 50%：质量模型提高 {_pp(_number(video_50, 'quality_minus_no_gates')):+.3f} 个百分点，95% CI [{_pp(_number(video_50, 'ci95_lower')):+.3f}, {_pp(_number(video_50, 'ci95_upper')):+.3f}]。
-- 质量模型在 50% 丢帧下相对标准输入下降 {_pp(decision['test']['quality_video_50_loss_from_clean']):.3f} 个百分点，小于完全缺失视觉时的 {_pp(decision['test']['quality_missing_vision_loss_from_clean']):.3f} 个百分点。V1 中“损坏视频比缺失视频更危险”的关键失败模式已修复。
+- 视频丢帧 25%：质量模型提高 {_pp(_number(video_25, "quality_minus_no_gates")):+.3f} 个百分点，95% CI [{_pp(_number(video_25, "ci95_lower")):+.3f}, {_pp(_number(video_25, "ci95_upper")):+.3f}]。
+- 视频丢帧 50%：质量模型提高 {_pp(_number(video_50, "quality_minus_no_gates")):+.3f} 个百分点，95% CI [{_pp(_number(video_50, "ci95_lower")):+.3f}, {_pp(_number(video_50, "ci95_upper")):+.3f}]。
+- 质量模型在 50% 丢帧下相对标准输入下降 {_pp(decision["test"]["quality_video_50_loss_from_clean"]):.3f} 个百分点，小于完全缺失视觉时的 {_pp(decision["test"]["quality_missing_vision_loss_from_clean"]):.3f} 个百分点。V1 中“损坏视频比缺失视频更危险”的关键失败模式已修复。
 
 ## 仍需如实报告的弱点
 
-- 10 dB 音频噪声下，质量模型比无门控模型低 {_pp(abs(_number(audio_10, 'quality_minus_no_gates'))):.3f} 个百分点。
-- 仅保留视频时，质量模型低 {_pp(abs(_number(vision_only, 'quality_minus_no_gates'))):.3f} 个百分点。
+- 10 dB 音频噪声下，质量模型比无门控模型低 {_pp(abs(_number(audio_10, "quality_minus_no_gates"))):.3f} 个百分点。
+- 仅保留视频时，质量模型低 {_pp(abs(_number(vision_only, "quality_minus_no_gates"))):.3f} 个百分点。
 - 质量门控不是所有条件下普遍更优；其已验证价值主要是视频质量退化识别，以及缺失语音或视觉时的可靠性。
 
 ## 统计口径
@@ -199,8 +194,7 @@ def main() -> int:
             "group": row["group"],
         }
         for row in summary_rows
-        if row["dataset"] == "bilingual_average"
-        and row["condition"] in CHART_CONDITIONS
+        if row["dataset"] == "bilingual_average" and row["condition"] in CHART_CONDITIONS
     ]
     chart_rows.sort(key=lambda row: (row["condition_order"], row["model"]))
 
@@ -214,9 +208,7 @@ def main() -> int:
             "quality_std": float(row["quality_weighted_f1_std"]),
             "no_gates_weighted_f1": float(row["no_gates_weighted_f1_mean"]),
             "no_gates_std": float(row["no_gates_weighted_f1_std"]),
-            "quality_minus_no_gates_pp": _pp(
-                float(row["quality_minus_no_gates"])
-            ),
+            "quality_minus_no_gates_pp": _pp(float(row["quality_minus_no_gates"])),
             "ci95_lower_pp": _pp(float(row["ci95_lower"])),
             "ci95_upper_pp": _pp(float(row["ci95_upper"])),
             "significant": _yes(row["significant_at_0_05"]),
@@ -234,24 +226,16 @@ def main() -> int:
         {
             "check_order": 1,
             "criterion": "验证集较无门控模型至少提高 0.5 个百分点",
-            "observed": _pp(
-                decision["validation"]["quality_minus_no_gates"]
-            ),
+            "observed": _pp(decision["validation"]["quality_minus_no_gates"]),
             "unit": "百分点",
-            "passed": decision["acceptance"][
-                "validation_gain_at_least_0_5pp"
-            ],
+            "passed": decision["acceptance"]["validation_gain_at_least_0_5pp"],
         },
         {
             "check_order": 2,
             "criterion": "标准测试代价不超过 0.5 个百分点",
-            "observed": _pp(
-                decision["test"]["clean_quality_minus_no_gates"]
-            ),
+            "observed": _pp(decision["test"]["clean_quality_minus_no_gates"]),
             "unit": "百分点（质量模型－无门控）",
-            "passed": decision["acceptance"][
-                "clean_test_penalty_no_more_than_0_5pp"
-            ],
+            "passed": decision["acceptance"]["clean_test_penalty_no_more_than_0_5pp"],
         },
         {
             "check_order": 3,
@@ -261,9 +245,7 @@ def main() -> int:
                 - decision["test"]["quality_video_50_loss_from_clean"]
             ),
             "unit": "百分点（正值为通过余量）",
-            "passed": decision["acceptance"][
-                "video_50_loss_not_greater_than_missing_vision_loss"
-            ],
+            "passed": decision["acceptance"]["video_50_loss_not_greater_than_missing_vision_loss"],
         },
     ]
 
@@ -657,18 +639,10 @@ def main() -> int:
             "datasets": {
                 "headline_metrics": [
                     {
-                        "validation_gain_pp": _pp(
-                            decision["validation"]["quality_minus_no_gates"]
-                        ),
-                        "clean_delta_pp": _pp(
-                            _number(clean, "quality_minus_no_gates")
-                        ),
-                        "video25_delta_pp": _pp(
-                            _number(video_25, "quality_minus_no_gates")
-                        ),
-                        "video50_delta_pp": _pp(
-                            _number(video_50, "quality_minus_no_gates")
-                        ),
+                        "validation_gain_pp": _pp(decision["validation"]["quality_minus_no_gates"]),
+                        "clean_delta_pp": _pp(_number(clean, "quality_minus_no_gates")),
+                        "video25_delta_pp": _pp(_number(video_25, "quality_minus_no_gates")),
+                        "video50_delta_pp": _pp(_number(video_50, "quality_minus_no_gates")),
                     }
                 ],
                 "robustness_chart": chart_rows,

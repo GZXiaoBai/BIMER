@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 CORRUPTION_ORDER = (
     "standard",
     "audio_snr_20db",
@@ -55,14 +54,8 @@ def f(row: dict[str, str], field: str) -> float:
     return float(row[field])
 
 
-def find_row(
-    rows: list[dict[str, str]], condition: str, dataset: str
-) -> dict[str, str]:
-    matches = [
-        row
-        for row in rows
-        if row["condition"] == condition and row["dataset"] == dataset
-    ]
+def find_row(rows: list[dict[str, str]], condition: str, dataset: str) -> dict[str, str]:
+    matches = [row for row in rows if row["condition"] == condition and row["dataset"] == dataset]
     if len(matches) != 1:
         raise ValueError(f"expected one row for {condition}/{dataset}, got {len(matches)}")
     return matches[0]
@@ -74,9 +67,7 @@ def find_class_row(
     matches = [
         row
         for row in rows
-        if row["condition"] == condition
-        and row["dataset"] == dataset
-        and row["emotion"] == emotion
+        if row["condition"] == condition and row["dataset"] == dataset and row["emotion"] == emotion
     ]
     if len(matches) != 1:
         raise ValueError(
@@ -128,12 +119,8 @@ def main() -> None:
     video_50_zh_neutral = find_class_row(
         per_class_rows, "video_frame_drop_50pct", "emotiontalk", "neutral"
     )
-    video_50_zh_joy = find_class_row(
-        per_class_rows, "video_frame_drop_50pct", "emotiontalk", "joy"
-    )
-    whisper_meld_joy = find_class_row(
-        per_class_rows, "whisper_text", "meld", "joy"
-    )
+    video_50_zh_joy = find_class_row(per_class_rows, "video_frame_drop_50pct", "emotiontalk", "joy")
+    whisper_meld_joy = find_class_row(per_class_rows, "whisper_text", "meld", "joy")
 
     corruption_chart = [
         metric_row(find_row(rows, condition, "bilingual_average"), index)
@@ -158,12 +145,8 @@ def main() -> None:
             "fallback_to_original": int(row["fallback_to_original"]),
             "fallback_rate": float(row["fallback_rate"]),
             "exact_match_rate_on_success": float(row["exact_match_rate_on_success"]),
-            "corpus_edit_error_rate_on_success": float(
-                row["corpus_edit_error_rate_on_success"]
-            ),
-            "modified_pipeline_input_rate": float(
-                row["modified_pipeline_input_rate"]
-            ),
+            "corpus_edit_error_rate_on_success": float(row["corpus_edit_error_rate_on_success"]),
+            "modified_pipeline_input_rate": float(row["modified_pipeline_input_rate"]),
         }
         for row in whisper_quality
     ]
@@ -286,7 +269,12 @@ def main() -> None:
                     "dataset": "headline_metrics",
                     "sourceId": "robustness-summary",
                     "metrics": [
-                        {"label": "10 dB 音频 F1 变化", "field": "audio_delta", "format": "number", "signed": True}
+                        {
+                            "label": "10 dB 音频 F1 变化",
+                            "field": "audio_delta",
+                            "format": "number",
+                            "signed": True,
+                        }
                     ],
                 },
                 {
@@ -295,7 +283,12 @@ def main() -> None:
                     "dataset": "headline_metrics",
                     "sourceId": "robustness-summary",
                     "metrics": [
-                        {"label": "50% 丢帧 F1 变化", "field": "video_delta", "format": "number", "signed": True}
+                        {
+                            "label": "50% 丢帧 F1 变化",
+                            "field": "video_delta",
+                            "format": "number",
+                            "signed": True,
+                        }
                     ],
                 },
                 {
@@ -304,7 +297,12 @@ def main() -> None:
                     "dataset": "headline_metrics",
                     "sourceId": "robustness-summary",
                     "metrics": [
-                        {"label": "Whisper F1 变化", "field": "whisper_delta", "format": "number", "signed": True}
+                        {
+                            "label": "Whisper F1 变化",
+                            "field": "whisper_delta",
+                            "format": "number",
+                            "signed": True,
+                        }
                     ],
                 },
             ],
@@ -339,9 +337,24 @@ def main() -> None:
                             "label": "双语平均 weighted-F1",
                         },
                         "tooltip": [
-                            {"field": "weighted_f1_mean", "type": "quantitative", "format": "number", "label": "weighted-F1"},
-                            {"field": "weighted_f1_std", "type": "quantitative", "format": "number", "label": "种子标准差"},
-                            {"field": "delta_from_standard", "type": "quantitative", "format": "number", "label": "相对标准输入"},
+                            {
+                                "field": "weighted_f1_mean",
+                                "type": "quantitative",
+                                "format": "number",
+                                "label": "weighted-F1",
+                            },
+                            {
+                                "field": "weighted_f1_std",
+                                "type": "quantitative",
+                                "format": "number",
+                                "label": "种子标准差",
+                            },
+                            {
+                                "field": "delta_from_standard",
+                                "type": "quantitative",
+                                "format": "number",
+                                "label": "相对标准输入",
+                            },
                         ],
                     },
                     "layout": "full",
@@ -384,7 +397,12 @@ def main() -> None:
                         {"field": "weighted_f1_std", "label": "标准差", "format": "number"},
                         {"field": "macro_f1_mean", "label": "macro-F1", "format": "number"},
                         {"field": "accuracy_mean", "label": "Accuracy", "format": "number"},
-                        {"field": "delta_from_standard", "label": "F1 变化", "format": "number", "movement": True},
+                        {
+                            "field": "delta_from_standard",
+                            "label": "F1 变化",
+                            "format": "number",
+                            "movement": True,
+                        },
                     ],
                 },
                 {
@@ -398,10 +416,24 @@ def main() -> None:
                     "defaultSort": {"field": "weighted_f1_mean", "direction": "desc"},
                     "columns": [
                         {"field": "condition_zh", "label": "可用/缺失模态", "type": "text"},
-                        {"field": "weighted_f1_mean", "label": "双语 weighted-F1", "format": "number"},
+                        {
+                            "field": "weighted_f1_mean",
+                            "label": "双语 weighted-F1",
+                            "format": "number",
+                        },
                         {"field": "weighted_f1_std", "label": "标准差", "format": "number"},
-                        {"field": "delta_from_standard", "label": "F1 变化", "format": "number", "movement": True},
-                        {"field": "relative_delta_pct", "label": "相对变化（%）", "format": "number", "movement": True},
+                        {
+                            "field": "delta_from_standard",
+                            "label": "F1 变化",
+                            "format": "number",
+                            "movement": True,
+                        },
+                        {
+                            "field": "relative_delta_pct",
+                            "label": "相对变化（%）",
+                            "format": "number",
+                            "movement": True,
+                        },
                     ],
                 },
                 {
@@ -418,7 +450,12 @@ def main() -> None:
                         {"field": "emotion", "label": "情感类别", "type": "text"},
                         {"field": "f1_mean", "label": "类别 F1", "format": "number"},
                         {"field": "f1_std", "label": "标准差", "format": "number"},
-                        {"field": "delta_from_standard", "label": "F1 变化", "format": "number", "movement": True},
+                        {
+                            "field": "delta_from_standard",
+                            "label": "F1 变化",
+                            "format": "number",
+                            "movement": True,
+                        },
                     ],
                 },
                 {
@@ -436,9 +473,21 @@ def main() -> None:
                         {"field": "fallback_to_original", "label": "回退原文", "format": "number"},
                         {"field": "fallback_rate", "label": "回退率", "format": "percent"},
                         {"field": "metric", "label": "误差指标", "type": "text"},
-                        {"field": "corpus_edit_error_rate_on_success", "label": "转写误差率", "format": "percent"},
-                        {"field": "exact_match_rate_on_success", "label": "成功样本完全一致率", "format": "percent"},
-                        {"field": "modified_pipeline_input_rate", "label": "模型输入被改写比例", "format": "percent"},
+                        {
+                            "field": "corpus_edit_error_rate_on_success",
+                            "label": "转写误差率",
+                            "format": "percent",
+                        },
+                        {
+                            "field": "exact_match_rate_on_success",
+                            "label": "成功样本完全一致率",
+                            "format": "percent",
+                        },
+                        {
+                            "field": "modified_pipeline_input_rate",
+                            "label": "模型输入被改写比例",
+                            "format": "percent",
+                        },
                     ],
                 },
             ],

@@ -25,9 +25,7 @@ def apply_modality_dropout(mask: Tensor, probability: float) -> Tensor:
     kept = available.clone()
     flattened_available = available.reshape(-1, available.shape[-1])
     flattened_kept = kept.reshape(-1, kept.shape[-1])
-    selected_rows = torch.rand(
-        flattened_available.shape[0], device=available.device
-    ) < probability
+    selected_rows = torch.rand(flattened_available.shape[0], device=available.device) < probability
     for row_index in range(flattened_available.shape[0]):
         candidates = torch.nonzero(flattened_available[row_index], as_tuple=False).flatten()
         if selected_rows[row_index] and candidates.numel() > 1:
@@ -71,7 +69,9 @@ class LanguageAwareGatedFusion(nn.Module):
 
         self.text_projection = nn.Sequential(nn.Linear(text_dim, d_model), nn.LayerNorm(d_model))
         self.audio_projection = nn.Sequential(nn.Linear(audio_dim, d_model), nn.LayerNorm(d_model))
-        self.vision_projection = nn.Sequential(nn.Linear(vision_dim, d_model), nn.LayerNorm(d_model))
+        self.vision_projection = nn.Sequential(
+            nn.Linear(vision_dim, d_model), nn.LayerNorm(d_model)
+        )
         self.modality_embedding = nn.Embedding(3, d_model)
         self.language_embedding = nn.Embedding(2, d_model)
         self.gate_networks = nn.ModuleList(

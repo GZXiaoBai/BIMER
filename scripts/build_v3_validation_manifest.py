@@ -16,10 +16,7 @@ def main() -> int:
         for record in read_manifest(args.manifest)
         if (
             (record.dataset == "meld" and str(record.split) == "dev")
-            or (
-                record.dataset == "emotiontalk"
-                and str(record.split) == "validation"
-            )
+            or (record.dataset == "emotiontalk" and str(record.split) == "validation")
         )
     ]
     if not records:

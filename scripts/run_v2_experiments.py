@@ -2,17 +2,16 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import hashlib
 import json
 import os
-from pathlib import Path
 import shlex
 import subprocess
 import sys
 import time
 import tomllib
-
+from dataclasses import dataclass
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -100,7 +99,7 @@ def build_jobs(config: dict, args: argparse.Namespace, output: Path) -> list[Job
                     )
                 )
     if "formal" in stages:
-        for name in (args.variant or config["formal"]["variants"]):
+        for name in args.variant or config["formal"]["variants"]:
             model, flags = _variant(name)
             for seed in config["seeds"]:
                 jobs.append(
@@ -199,12 +198,8 @@ def _verify_existing_result(job: Job) -> bool:
         if existing.get(name) != value
     }
     if mismatches:
-        raise ValueError(
-            f"existing result does not match requested job {job.tag}: {mismatches}"
-        )
-    if job.skip_test and (
-        payload.get("test") or payload.get("evaluation_datasets")
-    ):
+        raise ValueError(f"existing result does not match requested job {job.tag}: {mismatches}")
+    if job.skip_test and (payload.get("test") or payload.get("evaluation_datasets")):
         raise ValueError(f"validation-only result {job.result_path} contains test output")
     if not job.skip_test and not payload.get("test"):
         raise ValueError(f"formal result {job.result_path} contains no test output")
@@ -225,9 +220,7 @@ def main() -> int:
         raise SystemExit("augmentation manifest/feature arguments must be paired")
     jobs = build_jobs(config, args, output)
     environment = dict(os.environ)
-    environment["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + environment.get(
-        "PYTHONPATH", ""
-    )
+    environment["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + environment.get("PYTHONPATH", "")
     for job in jobs:
         command = _command(
             job,

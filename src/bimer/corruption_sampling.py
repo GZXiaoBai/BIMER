@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections import Counter, defaultdict
 import hashlib
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Iterable, Sequence
 
@@ -13,9 +13,7 @@ from .schema import UtteranceRecord
 
 
 def _stratum_seed(seed: int, dataset: str, emotion: str) -> int:
-    digest = hashlib.sha256(
-        f"{seed}\0{dataset}\0{emotion}".encode("utf-8")
-    ).digest()
+    digest = hashlib.sha256(f"{seed}\0{dataset}\0{emotion}".encode("utf-8")).digest()
     return int.from_bytes(digest[:8], "little", signed=False)
 
 
@@ -73,9 +71,7 @@ def materialize_feature_subset(
     groups = sorted({(record.dataset, str(record.split)) for record in records})
     for dataset, split in groups:
         group = [
-            record
-            for record in records
-            if record.dataset == dataset and str(record.split) == split
+            record for record in records if record.dataset == dataset and str(record.split) == split
         ]
         rows: dict[str, tuple[np.ndarray, ...]] = {}
         for shard in base_store.read_all(dataset, split):
@@ -89,9 +85,7 @@ def materialize_feature_subset(
                 )
         missing = [record.sample_id for record in group if record.sample_id not in rows]
         if missing:
-            raise ValueError(
-                f"base features missing {len(missing)} selected samples: {missing[0]}"
-            )
+            raise ValueError(f"base features missing {len(missing)} selected samples: {missing[0]}")
         for shard_index, start in enumerate(range(0, len(group), shard_size)):
             chunk = group[start : start + shard_size]
             sample_ids = np.asarray([record.sample_id for record in chunk], dtype=str)

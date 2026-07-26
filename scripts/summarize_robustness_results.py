@@ -16,7 +16,6 @@ import statistics
 from pathlib import Path
 from typing import Any, Iterable
 
-
 SEEDS = (42, 123, 2026)
 DATASETS = ("meld", "emotiontalk")
 CLASSES = ("neutral", "joy", "sadness", "anger", "surprise", "fear", "disgust")
@@ -79,11 +78,7 @@ def sample_stdev(values: Iterable[float]) -> float:
 
 def result_path(root: Path, condition: str, seed: int) -> Path:
     if condition == "standard":
-        return (
-            root
-            / "artifacts/experiments/joint/full/lagf/joint"
-            / f"seed-{seed}/results.json"
-        )
+        return root / "artifacts/experiments/joint/full/lagf/joint" / f"seed-{seed}/results.json"
     if condition.startswith("missing-"):
         return (
             root
@@ -149,10 +144,7 @@ def summarize_condition(
                         mean(float(runs[seed][name][metric]) for name in DATASETS)
                     )
                 standard_weighted.append(
-                    mean(
-                        float(standard_runs[seed][name]["weighted_f1"])
-                        for name in DATASETS
-                    )
+                    mean(float(standard_runs[seed][name]["weighted_f1"]) for name in DATASETS)
                 )
 
         weighted_mean, weighted_std = summarize_metric(per_seed["weighted_f1"])
@@ -179,8 +171,7 @@ def summarize_condition(
                 if not math.isclose(standard_mean, 0.0)
                 else None,
                 "per_seed_weighted_f1": {
-                    str(seed): per_seed["weighted_f1"][index]
-                    for index, seed in enumerate(SEEDS)
+                    str(seed): per_seed["weighted_f1"][index] for index, seed in enumerate(SEEDS)
                 },
             }
         )
@@ -196,12 +187,9 @@ def summarize_per_class(
     rows: list[dict[str, Any]] = []
     for dataset in DATASETS:
         for emotion in CLASSES:
-            values = [
-                float(runs[seed][dataset]["per_class_f1"][emotion]) for seed in SEEDS
-            ]
+            values = [float(runs[seed][dataset]["per_class_f1"][emotion]) for seed in SEEDS]
             standard_values = [
-                float(standard_runs[seed][dataset]["per_class_f1"][emotion])
-                for seed in SEEDS
+                float(standard_runs[seed][dataset]["per_class_f1"][emotion]) for seed in SEEDS
             ]
             rows.append(
                 {
@@ -254,9 +242,7 @@ def edit_distance(reference: list[str], hypothesis: list[str]) -> int:
 
 def summarize_whisper(root: Path) -> list[dict[str, Any]]:
     package_root = (
-        root
-        / "artifacts/autodl/robustness-results-v1/download-v1"
-        / "bimer-robustness-results-v1"
+        root / "artifacts/autodl/robustness-results-v1/download-v1" / "bimer-robustness-results-v1"
     )
     whisper_rows = load_jsonl(package_root / "output/whisper-test.jsonl")
     errors = load_jsonl(package_root / "reports/whisper-test-errors.jsonl")
@@ -323,17 +309,12 @@ def main() -> None:
     args = parse_args()
     root = args.project_root.resolve()
     output_dir = (
-        args.output_dir.resolve()
-        if args.output_dir
-        else root / "artifacts/analysis/robustness"
+        args.output_dir.resolve() if args.output_dir else root / "artifacts/analysis/robustness"
     )
     output_dir.mkdir(parents=True, exist_ok=True)
 
     standard_runs = load_condition_runs(root, "standard")
-    all_runs = {
-        condition: load_condition_runs(root, condition)
-        for condition in CONDITION_META
-    }
+    all_runs = {condition: load_condition_runs(root, condition) for condition in CONDITION_META}
 
     summary_rows: list[dict[str, Any]] = []
     per_class_rows: list[dict[str, Any]] = []
@@ -398,9 +379,7 @@ def main() -> None:
         "per_class": per_class_rows,
         "whisper_transcription_quality": whisper_rows,
     }
-    with (output_dir / "robustness-summary.json").open(
-        "w", encoding="utf-8"
-    ) as handle:
+    with (output_dir / "robustness-summary.json").open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
         handle.write("\n")
 

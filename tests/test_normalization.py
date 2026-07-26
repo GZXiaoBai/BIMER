@@ -43,5 +43,10 @@ def test_input_normalizer_uses_checkpointed_statistics():
     assert torch.allclose(audio.mean(dim=0), torch.zeros(2))
     assert torch.allclose(vision.mean(dim=0), torch.zeros(2))
     assert set(normalizer.state_dict()) == {
-        "text_mean", "text_std", "audio_mean", "audio_std", "vision_mean", "vision_std"
+        "text_mean",
+        "text_std",
+        "audio_mean",
+        "audio_std",
+        "vision_mean",
+        "vision_std",
     }

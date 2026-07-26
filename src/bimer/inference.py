@@ -14,6 +14,7 @@ import numpy as np
 import torch
 from torch import nn
 
+from .calibration import CalibrationProfile, apply_temperature
 from .feature_extractors import (
     AudioFeatureExtractor,
     TextFeatureExtractor,
@@ -22,11 +23,9 @@ from .feature_extractors import (
     prepare_audio_waveforms,
 )
 from .labels import EMOTION_LABELS
-from .quality import MODALITY_QUALITY_NAMES
-from .quality import audio_quality, text_quality
-from .schema import AnalysisResult, AnalysisSegment
-from .calibration import CalibrationProfile, apply_temperature
+from .quality import MODALITY_QUALITY_NAMES, audio_quality, text_quality
 from .runtime_cache import RuntimeFeatureCache
+from .schema import AnalysisResult, AnalysisSegment
 
 RequestedLanguage = Literal["auto", "zh", "en"]
 
@@ -53,7 +52,9 @@ class FeatureBundle:
 
     def __post_init__(self) -> None:
         rows = self.text.shape[0]
-        if not all(array.shape[0] == rows for array in (self.audio, self.vision, self.modality_mask)):
+        if not all(
+            array.shape[0] == rows for array in (self.audio, self.vision, self.modality_mask)
+        ):
             raise ValueError("feature bundle arrays must share a row count")
         if self.modality_mask.shape != (rows, 3):
             raise ValueError("modality_mask must have shape [segments, 3]")
@@ -74,9 +75,7 @@ class Transcriber(Protocol):
 
 
 class FeaturePipeline(Protocol):
-    def extract(
-        self, video_path: Path, segments: Sequence[TranscriptSegment]
-    ) -> FeatureBundle: ...
+    def extract(self, video_path: Path, segments: Sequence[TranscriptSegment]) -> FeatureBundle: ...
 
 
 def _split_long_segment(
@@ -84,9 +83,7 @@ def _split_long_segment(
 ) -> list[TranscriptSegment]:
     parts = max(1, math.ceil(segment.duration / maximum_seconds))
     text_parts = [
-        value.strip()
-        for value in re.split(r"(?<=[.!?。！？])\s*", segment.text)
-        if value.strip()
+        value.strip() for value in re.split(r"(?<=[.!?。！？])\s*", segment.text) if value.strip()
     ]
     if len(text_parts) != parts:
         words = segment.text.split()
@@ -334,12 +331,9 @@ class PretrainedFeaturePipeline:
         self.cache.store(key, arrays)
         return arrays
 
-    def extract(
-        self, video_path: Path, segments: Sequence[TranscriptSegment]
-    ) -> FeatureBundle:
+    def extract(self, video_path: Path, segments: Sequence[TranscriptSegment]) -> FeatureBundle:
         timestamps = [
-            [float(segment.start_seconds), float(segment.end_seconds)]
-            for segment in segments
+            [float(segment.start_seconds), float(segment.end_seconds)] for segment in segments
         ]
         common = {
             "video_sha256": self._video_sha256(video_path) if self.cache else "",
@@ -364,11 +358,7 @@ class PretrainedFeaturePipeline:
                     [
                         text_quality(
                             segment.text,
-                            source=(
-                                "whisper"
-                                if segment.asr_confidence is not None
-                                else "human"
-                            ),
+                            source=("whisper" if segment.asr_confidence is not None else "human"),
                             asr_confidence=segment.asr_confidence,
                         )
                         for segment in segments
@@ -384,15 +374,13 @@ class PretrainedFeaturePipeline:
             full_waveform = _extract_full_waveform(video_path)
             waveforms = [_slice_waveform(full_waveform, segment) for segment in segments]
             safe_waveforms, available = prepare_audio_waveforms(waveforms)
-            quality_rows = np.stack(
-                [audio_quality(waveform) for waveform in waveforms]
-            ).astype(np.float32)
+            quality_rows = np.stack([audio_quality(waveform) for waveform in waveforms]).astype(
+                np.float32
+            )
             if not np.any(quality_rows[:, 2] > 0.0):
                 raise ValueError("No valid speech audio was detected")
             return {
-                "features": self.audio_extractor.encode(safe_waveforms).astype(
-                    np.float32
-                ),
+                "features": self.audio_extractor.encode(safe_waveforms).astype(np.float32),
                 "available": available.astype(np.bool_),
                 "quality": quality_rows,
             }
@@ -452,9 +440,7 @@ class PretrainedFeaturePipeline:
                             )
                     vision_rows.append(feature[0])
                     vision_available.append(available)
-                    vision_quality_rows.append(
-                        np.asarray(quality, dtype=np.float32)
-                    )
+                    vision_quality_rows.append(np.asarray(quality, dtype=np.float32))
             return {
                 "features": np.stack(vision_rows).astype(np.float32),
                 "available": np.asarray(vision_available, dtype=np.bool_),
@@ -574,9 +560,7 @@ class DialogueAnalyzer:
         features = self.feature_pipeline.extract(path, segments)
         feature_seconds = time.perf_counter() - feature_started
         runtime_profile = dict(initial_runtime or {})
-        runtime_profile.update(
-            getattr(self.feature_pipeline, "last_runtime_profile", {})
-        )
+        runtime_profile.update(getattr(self.feature_pipeline, "last_runtime_profile", {}))
         if not getattr(self.feature_pipeline, "last_runtime_profile", None):
             runtime_profile["feature_extraction"] = feature_seconds
         fusion_started = time.perf_counter()
@@ -589,13 +573,21 @@ class DialogueAnalyzer:
             length = end - start
             attention = torch.ones(1, length, dtype=torch.bool, device=self.device)
             output = self.model(
-                text_features=torch.from_numpy(features.text[start:end]).unsqueeze(0).to(self.device),
-                audio_features=torch.from_numpy(features.audio[start:end]).unsqueeze(0).to(self.device),
-                vision_features=torch.from_numpy(features.vision[start:end]).unsqueeze(0).to(self.device),
-                modality_mask=torch.from_numpy(features.modality_mask[start:end]).unsqueeze(0).to(self.device),
-                modality_quality=torch.from_numpy(
-                    np.asarray(features.modality_quality)[start:end]
-                ).unsqueeze(0).to(self.device),
+                text_features=torch.from_numpy(features.text[start:end])
+                .unsqueeze(0)
+                .to(self.device),
+                audio_features=torch.from_numpy(features.audio[start:end])
+                .unsqueeze(0)
+                .to(self.device),
+                vision_features=torch.from_numpy(features.vision[start:end])
+                .unsqueeze(0)
+                .to(self.device),
+                modality_mask=torch.from_numpy(features.modality_mask[start:end])
+                .unsqueeze(0)
+                .to(self.device),
+                modality_quality=torch.from_numpy(np.asarray(features.modality_quality)[start:end])
+                .unsqueeze(0)
+                .to(self.device),
                 attention_mask=attention,
                 language_ids=torch.tensor(
                     [0 if detected_language == "en" else 1],
@@ -603,9 +595,7 @@ class DialogueAnalyzer:
                     device=self.device,
                 ),
             )
-            probability_sum[start:end] += torch.softmax(
-                output.logits[0], dim=-1
-            ).cpu().numpy()
+            probability_sum[start:end] += torch.softmax(output.logits[0], dim=-1).cpu().numpy()
             gate_sum[start:end] += output.gates[0].cpu().numpy()
             appearances[start:end] += 1.0
             if end == count:
@@ -633,7 +623,9 @@ class DialogueAnalyzer:
             }
             quality = {
                 name: {
-                    field: float(np.asarray(features.modality_quality)[index, position, field_index])
+                    field: float(
+                        np.asarray(features.modality_quality)[index, position, field_index]
+                    )
                     for field_index, field in enumerate(MODALITY_QUALITY_NAMES[name])
                 }
                 for position, name in enumerate(("text", "audio", "vision"))

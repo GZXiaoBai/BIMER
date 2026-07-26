@@ -106,9 +106,7 @@ def test_verify_feature_range_rejects_wrong_ids(tmp_path):
 def test_verify_feature_range_rejects_wrong_width(tmp_path):
     records = make_records(16)
     store = FeatureStore(tmp_path)
-    store.write(
-        "emotiontalk", "train", 0, feature_shard(records, text_width=767)
-    )
+    store.write("emotiontalk", "train", 0, feature_shard(records, text_width=767))
 
     with pytest.raises(ValueError, match="width 768"):
         verify_feature_range(records, store, shard_size=16)

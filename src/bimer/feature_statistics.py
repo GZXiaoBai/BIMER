@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections import Counter
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Iterable, Mapping
 
@@ -22,9 +22,7 @@ def compute_feature_statistics(
     expected_dims: Mapping[str, int] = MODALITY_DIMS,
 ) -> dict[str, object]:
     selected = [
-        record
-        for record in records
-        if record.dataset == dataset and str(record.split) == split
+        record for record in records if record.dataset == dataset and str(record.split) == split
     ]
     if not selected:
         raise ValueError(f"manifest has no records for {dataset} {split}")
@@ -77,9 +75,7 @@ def compute_feature_statistics(
             accumulator = accumulators[modality]
             accumulator["available_count"] += int(available.sum())
             accumulator["unavailable_count"] += int((~available).sum())
-            accumulator["available_zero_vector_count"] += int(
-                np.isclose(active_norms, 0.0).sum()
-            )
+            accumulator["available_zero_vector_count"] += int(np.isclose(active_norms, 0.0).sum())
             accumulator["nonfinite_row_count"] += nonfinite_count
             accumulator["norm_sum"] += float(active_norms.sum(dtype=np.float64))
             accumulator["norm_square_sum"] += float(
@@ -104,9 +100,7 @@ def compute_feature_statistics(
             "available_count": available_count,
             "unavailable_count": int(accumulator["unavailable_count"]),
             "available_rate": available_count / len(observed_ids),
-            "available_zero_vector_count": int(
-                accumulator["available_zero_vector_count"]
-            ),
+            "available_zero_vector_count": int(accumulator["available_zero_vector_count"]),
             "nonfinite_row_count": int(accumulator["nonfinite_row_count"]),
             "mean_l2_norm": mean_norm,
             "std_l2_norm": variance**0.5,
@@ -119,18 +113,14 @@ def compute_feature_statistics(
         "sample_count": len(selected),
         "feature_sample_count": len(observed_ids),
         "shard_count": len(paths),
-        "label_counts": {
-            label: int(label_counts.get(label, 0)) for label in EMOTION_LABELS
-        },
+        "label_counts": {label: int(label_counts.get(label, 0)) for label in EMOTION_LABELS},
         "missing_manifest_samples": len(manifest_set - observed_set),
         "unexpected_feature_samples": len(observed_set - manifest_set),
         "modalities": modality_report,
     }
 
 
-def write_feature_statistics(
-    report: Mapping[str, object], output_path: Path | str
-) -> Path:
+def write_feature_statistics(report: Mapping[str, object], output_path: Path | str) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(

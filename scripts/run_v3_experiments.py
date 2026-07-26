@@ -2,16 +2,16 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
 import hashlib
 import json
 import os
-from pathlib import Path
 import shlex
 import subprocess
 import sys
 import time
 import tomllib
+from dataclasses import dataclass
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,13 +27,7 @@ class Job:
 
     @property
     def result_path(self) -> Path:
-        return (
-            self.output
-            / "quality_lagf"
-            / "joint"
-            / f"seed-{self.seed}"
-            / "results.json"
-        )
+        return self.output / "quality_lagf" / "joint" / f"seed-{self.seed}" / "results.json"
 
     @property
     def checkpoint_path(self) -> Path:
@@ -126,9 +120,7 @@ def build_jobs(config: dict, args: argparse.Namespace, output: Path) -> list[Job
                 seed=int(seed),
                 classification_loss=selection["classification_loss"],
                 ranking_weight=(
-                    0.0
-                    if variant == "v3_loss_only"
-                    else float(selection["gate_ranking_weight"])
+                    0.0 if variant == "v3_loss_only" else float(selection["gate_ranking_weight"])
                 ),
                 output=output / "formal" / variant,
                 screen=False,
@@ -263,9 +255,7 @@ def _run_test_once(
     marker = output / "exploratory-test" / "TEST_EVALUATED"
     system_checkpoint_selection = output / "formal" / "v3-system-checkpoint.json"
     if not args.dry_run and not system_checkpoint_selection.is_file():
-        raise SystemExit(
-            "V3 system checkpoint is not frozen from validation-only formal results"
-        )
+        raise SystemExit("V3 system checkpoint is not frozen from validation-only formal results")
 
     def evaluate_all():
         paths = []
@@ -360,9 +350,13 @@ def main() -> int:
         )
     jobs = build_jobs(config, args, output)
     environment = dict(os.environ)
-    environment["PYTHONPATH"] = str(ROOT / "src") + os.pathsep + environment.get(
-        "PYTHONPATH",
-        "",
+    environment["PYTHONPATH"] = (
+        str(ROOT / "src")
+        + os.pathsep
+        + environment.get(
+            "PYTHONPATH",
+            "",
+        )
     )
     for job in jobs:
         command = _command(
@@ -394,9 +388,7 @@ def main() -> int:
                 if existing_config.get(name) != value
             }
             if mismatches:
-                raise RuntimeError(
-                    f"existing V3 result conflicts with requested job: {mismatches}"
-                )
+                raise RuntimeError(f"existing V3 result conflicts with requested job: {mismatches}")
             if set(existing.get("validation", {})) != {"meld", "emotiontalk"}:
                 raise RuntimeError("existing V3 result lacks bilingual validation metrics")
             if not job.checkpoint_path.is_file():

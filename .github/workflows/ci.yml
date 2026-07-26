@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v9
+        with:
+          enable-cache: true
+          python-version: "3.11"
+      - name: Install locked environment
+        run: uv sync --extra dev --extra inference --frozen
+      - name: Public-tree policy
+        run: uv run python scripts/check_public_tree.py --root .
+      - name: Ruff
+        run: |
+          uv run ruff check src tests scripts
+          uv run ruff format --check src tests scripts
+      - name: Mypy core modules
+        run: >-
+          uv run mypy
+          src/bimer/deployment.py
+          src/bimer/integrity.py
+          src/bimer/runtime.py
+          src/bimer/calibration.py
+      - name: Tests and coverage
+        run: >-
+          uv run pytest
+          --cov=bimer
+          --cov-report=term-missing
+          --cov-fail-under=80
+      - name: Dependency audit
+        run: uv run pip-audit
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

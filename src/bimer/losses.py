@@ -77,6 +77,4 @@ def masked_classification_loss(
         return (losses * weights).sum() / weights.sum().clamp_min(
             torch.finfo(flat_logits.dtype).eps
         )
-    raise ValueError(
-        "loss_name must be weighted_ce, balanced_softmax, or focal"
-    )
+    raise ValueError("loss_name must be weighted_ce, balanced_softmax, or focal")

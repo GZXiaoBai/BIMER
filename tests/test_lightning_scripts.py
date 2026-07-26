@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import subprocess
-
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parents[1]
 
@@ -51,9 +50,7 @@ def test_lightning_fifth_segment_uses_one_gpu_and_first_pending_range(tmp_path):
 def test_lightning_fifth_segment_skips_completed_ranges(tmp_path):
     ranges = tmp_path / "features-emotiontalk-train-v4" / "ranges"
     ranges.mkdir(parents=True)
-    (ranges / "range-00480-00500.json").write_text(
-        '{"is_valid": true}\n', encoding="utf-8"
-    )
+    (ranges / "range-00480-00500.json").write_text('{"is_valid": true}\n', encoding="utf-8")
 
     result = _run("run_emotiontalk_lightning.sh", studio_root=tmp_path)
 
@@ -77,20 +74,16 @@ def test_lightning_fifth_segment_reports_completion(tmp_path):
 
 
 def test_lightning_setup_installs_without_replacing_preinstalled_torch():
-    source = (PROJECT_ROOT / "scripts" / "setup_lightning_ai.sh").read_text(
-        encoding="utf-8"
-    )
+    source = (PROJECT_ROOT / "scripts" / "setup_lightning_ai.sh").read_text(encoding="utf-8")
 
     assert "pip install --no-deps --editable" in source
-    assert 'transformers==4.49.0' in source
+    assert "transformers==4.49.0" in source
     assert "pip install torch" not in source
     assert "pip install torchvision" not in source
 
 
 def test_lightning_setup_uses_transformers_compatible_huggingface_hub():
-    source = (PROJECT_ROOT / "scripts" / "setup_lightning_ai.sh").read_text(
-        encoding="utf-8"
-    )
+    source = (PROJECT_ROOT / "scripts" / "setup_lightning_ai.sh").read_text(encoding="utf-8")
 
     assert "huggingface_hub[hf_xet]>=0.30,<1.0" in source
     assert "huggingface_hub[hf_xet]==1.23.0" not in source
@@ -144,9 +137,7 @@ def test_autodl_eval_splits_queue_official_validation_and_test_ranges(tmp_path):
 def test_autodl_eval_splits_skip_completed_small_ranges(tmp_path):
     ranges = tmp_path / "features-emotiontalk-validation-v4" / "ranges"
     ranges.mkdir(parents=True)
-    (ranges / "range-00000-00020.json").write_text(
-        '{"is_valid": true}\n', encoding="utf-8"
-    )
+    (ranges / "range-00000-00020.json").write_text('{"is_valid": true}\n', encoding="utf-8")
 
     result = _run("run_autodl_emotiontalk_eval_splits.sh", studio_root=tmp_path)
 
@@ -187,9 +178,7 @@ def test_autodl_meld_prepare_batches_flat_symlinks_with_find_placeholder_last(tm
     result = _run("prepare_meld_autodl.sh", studio_root=tmp_path)
 
     assert result.returncode == 0, result.stderr
-    link_commands = [
-        line for line in result.stdout.splitlines() if "-exec ln" in line
-    ]
+    link_commands = [line for line in result.stdout.splitlines() if "-exec ln" in line]
     assert len(link_commands) == 3
     for command in link_commands:
         assert "ln -sfn -t" in command
@@ -197,9 +186,7 @@ def test_autodl_meld_prepare_batches_flat_symlinks_with_find_placeholder_last(tm
 
 
 def test_autodl_meld_prepare_uses_verified_raw_media_counts():
-    source = (PROJECT_ROOT / "scripts" / "prepare_meld_autodl.sh").read_text(
-        encoding="utf-8"
-    )
+    source = (PROJECT_ROOT / "scripts" / "prepare_meld_autodl.sh").read_text(encoding="utf-8")
 
     # The checksum-pinned official raw archive contains four unannotated dev
     # clips and omits annotated dia110_utt7.mp4.
@@ -215,10 +202,10 @@ def test_autodl_meld_prepare_disk_check_uses_integer_bytes(tmp_path):
     fake_awk = fake_bin / "awk"
     fake_awk.write_text(
         "#!/usr/bin/env bash\n"
-        "if [[ \"$*\" == *\"* 1024\"* ]]; then\n"
+        'if [[ "$*" == *"* 1024"* ]]; then\n'
         "  printf '8.18968e+10\\n'\n"
         "else\n"
-        "  /usr/bin/awk \"$@\"\n"
+        '  /usr/bin/awk "$@"\n'
         "fi\n",
         encoding="utf-8",
     )
@@ -255,8 +242,7 @@ def test_autodl_meld_prepare_enables_autodl_academic_network(tmp_path):
     fake_curl.chmod(0o755)
     network_turbo = tmp_path / "network_turbo"
     network_turbo.write_text(
-        "export http_proxy='http://turbo.test:1234'\n"
-        "export https_proxy='http://turbo.test:1234'\n",
+        "export http_proxy='http://turbo.test:1234'\nexport https_proxy='http://turbo.test:1234'\n",
         encoding="utf-8",
     )
 

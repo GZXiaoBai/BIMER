@@ -42,10 +42,7 @@ def _evaluate(plan, adjudicated, predictions, iterations):
     )
     probabilities = np.asarray(
         [
-            [
-                float(prediction_by_key[key][f"probability_{label}"])
-                for label in EMOTION_LABELS
-            ]
+            [float(prediction_by_key[key][f"probability_{label}"]) for label in EMOTION_LABELS]
             for key in ordered
         ],
         dtype=np.float64,

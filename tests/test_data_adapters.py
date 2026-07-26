@@ -90,9 +90,7 @@ def test_loads_emotiontalk_json_manifest_and_maps_labels(tmp_path):
         ),
         encoding="utf-8",
     )
-    records = load_emotiontalk_manifest(
-        manifest, media_root=tmp_path / "videos", split="train"
-    )
+    records = load_emotiontalk_manifest(manifest, media_root=tmp_path / "videos", split="train")
     assert records[0].emotion == "joy"
     assert records[0].language == "zh"
     assert records[0].video_path.name == "G01_001_004.mp4"

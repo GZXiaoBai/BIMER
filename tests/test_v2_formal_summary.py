@@ -1,9 +1,8 @@
 import csv
 import json
-from pathlib import Path
 import subprocess
 import sys
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "summarize_v2_formal_results.py"
@@ -36,15 +35,7 @@ def _write_result(
     model = "lagf" if variant == "lagf_no_gates" else "quality_lagf"
     if variant in {"early_mlp", "early_context"}:
         model = variant
-    path = (
-        root
-        / scope
-        / variant
-        / model
-        / "joint"
-        / f"seed-{seed}"
-        / "results.json"
-    )
+    path = root / scope / variant / model / "joint" / f"seed-{seed}" / "results.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
@@ -155,8 +146,7 @@ def test_cli_writes_sample_standard_deviation_and_ablation_deltas(tmp_path):
     quality = next(
         row
         for row in formal
-        if row["variant"] == "quality_lagf"
-        and row["dataset"] == "bilingual_average"
+        if row["variant"] == "quality_lagf" and row["dataset"] == "bilingual_average"
     )
     assert float(quality["weighted_f1_mean"]) == 0.65
     assert float(quality["weighted_f1_std"]) == 0.1
@@ -164,8 +154,7 @@ def test_cli_writes_sample_standard_deviation_and_ablation_deltas(tmp_path):
     no_language = next(
         row
         for row in ablations
-        if row["variant"] == "no_language"
-        and row["dataset"] == "bilingual_average"
+        if row["variant"] == "no_language" and row["dataset"] == "bilingual_average"
     )
     assert float(no_language["weighted_f1_mean"]) == 0.6
     assert float(no_language["weighted_f1_delta_vs_full"]) == -0.05
@@ -179,11 +168,7 @@ def test_cli_rejects_an_incomplete_three_seed_matrix(tmp_path):
     results = tmp_path / "results"
     output = tmp_path / "summary"
     _build_complete_fixture(results)
-    missing = next(
-        (results / "ablations" / "no_quality").glob(
-            "**/seed-2026/results.json"
-        )
-    )
+    missing = next((results / "ablations" / "no_quality").glob("**/seed-2026/results.json"))
     missing.unlink()
 
     run = subprocess.run(

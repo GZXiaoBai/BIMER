@@ -4,7 +4,6 @@ from typing import Literal, Sequence
 
 import numpy as np
 
-
 MODALITY_QUALITY_NAMES: dict[str, tuple[str, str, str, str]] = {
     "text": ("source_human", "confidence", "length", "completeness"),
     "audio": ("duration", "rms", "voiced_ratio", "clipping_free"),

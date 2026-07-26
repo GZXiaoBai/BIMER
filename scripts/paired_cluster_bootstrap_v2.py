@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from dataclasses import dataclass
 from pathlib import Path
-import sys
 
 import numpy as np
-
 
 SEEDS = (42, 123, 2026)
 DATASETS = ("meld", "emotiontalk")
@@ -51,15 +50,10 @@ def _prediction_path(
     seed: int,
     dataset: str,
 ) -> Path:
-    matches = sorted(
-        (root / scope / variant).glob(
-            f"**/seed-{seed}/predictions/{dataset}.npz"
-        )
-    )
+    matches = sorted((root / scope / variant).glob(f"**/seed-{seed}/predictions/{dataset}.npz"))
     if len(matches) != 1:
         raise ValueError(
-            f"missing predictions for {scope}/{variant}/seed-{seed}/"
-            f"{dataset}: found {len(matches)}"
+            f"missing predictions for {scope}/{variant}/seed-{seed}/{dataset}: found {len(matches)}"
         )
     return matches[0]
 
@@ -105,9 +99,7 @@ def _align_pair(
     comparator_ids = comparator.sample_ids.tolist()
     if set(full_ids) != set(comparator_ids):
         raise ValueError(f"sample ids do not match for {label}")
-    comparator_index = {
-        sample_id: index for index, sample_id in enumerate(comparator_ids)
-    }
+    comparator_index = {sample_id: index for index, sample_id in enumerate(comparator_ids)}
     order = np.asarray(
         [comparator_index[sample_id] for sample_id in full_ids],
         dtype=np.int64,
@@ -192,15 +184,12 @@ def _paired_delta_draws(
         comparator_confusions,
         optimize=True,
     )
-    draws = (
-        _weighted_f1_from_confusions(full_draw_confusions)
-        - _weighted_f1_from_confusions(comparator_draw_confusions)
+    draws = _weighted_f1_from_confusions(full_draw_confusions) - _weighted_f1_from_confusions(
+        comparator_draw_confusions
     )
     point = float(
         _weighted_f1_from_confusions(full_confusions.sum(axis=0))[0]
-        - _weighted_f1_from_confusions(
-            comparator_confusions.sum(axis=0)
-        )[0]
+        - _weighted_f1_from_confusions(comparator_confusions.sum(axis=0))[0]
     )
     return point, draws, cluster_count
 
@@ -213,15 +202,9 @@ def _comparison_rows(
     iterations: int,
     rng: np.random.Generator,
 ) -> list[dict[str, object]]:
-    dataset_points: dict[str, list[float]] = {
-        dataset: [] for dataset in DATASETS
-    }
-    dataset_draws: dict[str, list[np.ndarray]] = {
-        dataset: [] for dataset in DATASETS
-    }
-    cluster_counts: dict[str, list[int]] = {
-        dataset: [] for dataset in DATASETS
-    }
+    dataset_points: dict[str, list[float]] = {dataset: [] for dataset in DATASETS}
+    dataset_draws: dict[str, list[np.ndarray]] = {dataset: [] for dataset in DATASETS}
+    cluster_counts: dict[str, list[int]] = {dataset: [] for dataset in DATASETS}
     for dataset in DATASETS:
         for seed in SEEDS:
             full_path = _prediction_path(
@@ -268,13 +251,7 @@ def _comparison_rows(
             )
         )
     bilingual_draws = np.mean(
-        np.stack(
-            [
-                draw
-                for dataset in DATASETS
-                for draw in dataset_draws[dataset]
-            ]
-        ),
+        np.stack([draw for dataset in DATASETS for draw in dataset_draws[dataset]]),
         axis=0,
     )
     rows.append(
@@ -283,21 +260,11 @@ def _comparison_rows(
             comparator=comparator,
             dataset="bilingual_average",
             point=float(
-                np.mean(
-                    [
-                        point
-                        for dataset in DATASETS
-                        for point in dataset_points[dataset]
-                    ]
-                )
+                np.mean([point for dataset in DATASETS for point in dataset_points[dataset]])
             ),
             draws=bilingual_draws,
             iterations=iterations,
-            cluster_counts=[
-                count
-                for dataset in DATASETS
-                for count in cluster_counts[dataset]
-            ],
+            cluster_counts=[count for dataset in DATASETS for count in cluster_counts[dataset]],
         )
     )
     return rows
@@ -315,9 +282,7 @@ def _build_row(
 ) -> dict[str, object]:
     lower, upper = np.quantile(draws, [0.025, 0.975])
     return {
-        "comparison_scope": (
-            "formal" if scope == "formal" else "ablation"
-        ),
+        "comparison_scope": ("formal" if scope == "formal" else "ablation"),
         "full_model": "quality_lagf",
         "comparator": comparator,
         "dataset": dataset,

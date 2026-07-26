@@ -52,4 +52,3 @@ def normalize_emotion(label: str, *, dataset: str | None = None) -> EmotionLabel
 def emotion_index(label: str) -> int:
     normalized = normalize_emotion(label)
     return EMOTION_LABELS.index(cast(EmotionLabel, normalized))
-

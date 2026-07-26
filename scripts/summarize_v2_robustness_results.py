@@ -11,16 +11,15 @@ from __future__ import annotations
 
 import argparse
 import csv
-from dataclasses import dataclass
 import json
 import math
-from pathlib import Path
 import statistics
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Iterable
 
 import numpy as np
-
 
 SEEDS = (42, 123, 2026)
 DATASETS = ("meld", "emotiontalk")
@@ -126,13 +125,7 @@ def _expected_prediction_path(
     seed: int,
     dataset: str,
 ) -> Path:
-    return (
-        root
-        / model
-        / condition
-        / f"seed-{seed}.predictions"
-        / f"{dataset}.npz"
-    )
+    return root / model / condition / f"seed-{seed}.predictions" / f"{dataset}.npz"
 
 
 def _load_bundle(path: Path) -> PredictionBundle:
@@ -173,9 +166,7 @@ def _align_pair(
     baseline_ids = baseline.sample_ids.tolist()
     if set(candidate_ids) != set(baseline_ids):
         raise ValueError(f"sample IDs do not match for {label}")
-    baseline_index = {
-        sample_id: index for index, sample_id in enumerate(baseline_ids)
-    }
+    baseline_index = {sample_id: index for index, sample_id in enumerate(baseline_ids)}
     order = np.asarray(
         [baseline_index[sample_id] for sample_id in candidate_ids],
         dtype=np.int64,
@@ -256,9 +247,8 @@ def paired_cluster_delta_draws(
         baseline_confusions,
         optimize=True,
     )
-    draws = (
-        _weighted_f1_from_confusions(candidate_draws)
-        - _weighted_f1_from_confusions(baseline_draws)
+    draws = _weighted_f1_from_confusions(candidate_draws) - _weighted_f1_from_confusions(
+        baseline_draws
     )
     point = float(
         _weighted_f1_from_confusions(candidate_confusions.sum(axis=0))[0]
@@ -300,9 +290,7 @@ def _validate_matrix(results_root: Path) -> dict[str, Any]:
         for dataset in DATASETS
     ]
     missing = [
-        str(path)
-        for path in (*expected_results, *expected_predictions)
-        if not path.is_file()
+        str(path) for path in (*expected_results, *expected_predictions) if not path.is_file()
     ]
     if missing:
         raise FileNotFoundError(
@@ -312,8 +300,7 @@ def _validate_matrix(results_root: Path) -> dict[str, Any]:
     actual_predictions = list(results_root.glob("*/*/seed-*.predictions/*.npz"))
     if len(actual_results) != len(expected_results):
         raise ValueError(
-            f"expected {len(expected_results)} result JSON files, "
-            f"found {len(actual_results)}"
+            f"expected {len(expected_results)} result JSON files, found {len(actual_results)}"
         )
     if len(actual_predictions) != len(expected_predictions):
         raise ValueError(
@@ -363,9 +350,7 @@ def _dataset_seed_metrics(
     return output
 
 
-def summarize_models(
-    runs: dict[str, dict[str, dict[int, dict[str, Any]]]]
-) -> list[dict[str, Any]]:
+def summarize_models(runs: dict[str, dict[str, dict[int, dict[str, Any]]]]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for model in MODELS:
         standard = {
@@ -425,14 +410,10 @@ def _summary_row(
     matches = [
         row
         for row in rows
-        if row["model"] == model
-        and row["condition"] == condition
-        and row["dataset"] == dataset
+        if row["model"] == model and row["condition"] == condition and row["dataset"] == dataset
     ]
     if len(matches) != 1:
-        raise ValueError(
-            f"expected one summary row for {model}/{condition}/{dataset}"
-        )
+        raise ValueError(f"expected one summary row for {model}/{condition}/{dataset}")
     return matches[0]
 
 
@@ -451,15 +432,9 @@ def compare_models(
     context_counts: dict[str, set[int]] = {dataset: set() for dataset in DATASETS}
 
     for condition, (group, condition_label) in CONDITION_META.items():
-        dataset_points: dict[str, list[float]] = {
-            dataset: [] for dataset in DATASETS
-        }
-        dataset_draws: dict[str, list[np.ndarray]] = {
-            dataset: [] for dataset in DATASETS
-        }
-        dataset_clusters: dict[str, list[int]] = {
-            dataset: [] for dataset in DATASETS
-        }
+        dataset_points: dict[str, list[float]] = {dataset: [] for dataset in DATASETS}
+        dataset_draws: dict[str, list[np.ndarray]] = {dataset: [] for dataset in DATASETS}
+        dataset_clusters: dict[str, list[int]] = {dataset: [] for dataset in DATASETS}
         for dataset in DATASETS:
             for seed in SEEDS:
                 candidate_path = _expected_prediction_path(
@@ -504,14 +479,10 @@ def compare_models(
                     rng=rng,
                 )
                 candidate_point = float(
-                    _weighted_f1_from_confusions(
-                        _cluster_confusions(candidate).sum(axis=0)
-                    )[0]
+                    _weighted_f1_from_confusions(_cluster_confusions(candidate).sum(axis=0))[0]
                 )
                 baseline_point = float(
-                    _weighted_f1_from_confusions(
-                        _cluster_confusions(baseline).sum(axis=0)
-                    )[0]
+                    _weighted_f1_from_confusions(_cluster_confusions(baseline).sum(axis=0))[0]
                 )
                 if not math.isclose(
                     candidate_point,
@@ -560,20 +531,10 @@ def compare_models(
                 group=group,
                 condition_label=condition_label,
                 dataset="bilingual_average",
-                points=[
-                    point
-                    for dataset in DATASETS
-                    for point in dataset_points[dataset]
-                ],
-                draws=[
-                    draw
-                    for dataset in DATASETS
-                    for draw in dataset_draws[dataset]
-                ],
+                points=[point for dataset in DATASETS for point in dataset_points[dataset]],
+                draws=[draw for dataset in DATASETS for draw in dataset_draws[dataset]],
                 cluster_counts=[
-                    count
-                    for dataset in DATASETS
-                    for count in dataset_clusters[dataset]
+                    count for dataset in DATASETS for count in dataset_clusters[dataset]
                 ],
                 iterations=iterations,
             )
@@ -657,11 +618,7 @@ def _find_comparison(
     condition: str,
     dataset: str = "bilingual_average",
 ) -> dict[str, Any]:
-    matches = [
-        row
-        for row in rows
-        if row["condition"] == condition and row["dataset"] == dataset
-    ]
+    matches = [row for row in rows if row["condition"] == condition and row["dataset"] == dataset]
     if len(matches) != 1:
         raise ValueError(f"missing comparison for {condition}/{dataset}")
     return matches[0]
@@ -698,9 +655,7 @@ def build_decision(
     if selected_model != "quality_lagf":
         raise ValueError(f"unexpected frozen selected model: {selected_model}")
 
-    validation_delta = float(
-        selection["no_gate_comparison"]["selected_model_delta"]
-    )
+    validation_delta = float(selection["no_gate_comparison"]["selected_model_delta"])
     clean = _find_comparison(comparison_rows, "standard")
     video_25 = _find_comparison(comparison_rows, "video_frame_drop_25pct")
     video_50 = _find_comparison(comparison_rows, "video_frame_drop_50pct")
@@ -708,9 +663,7 @@ def build_decision(
     whisper = _find_comparison(comparison_rows, "whisper_text")
     vision_only = _find_comparison(comparison_rows, "missing-text-audio")
 
-    quality_standard = _model_value(
-        summary_rows, model="quality_lagf", condition="standard"
-    )
+    quality_standard = _model_value(summary_rows, model="quality_lagf", condition="standard")
     quality_video_50 = _model_value(
         summary_rows,
         model="quality_lagf",
@@ -735,11 +688,7 @@ def build_decision(
     )
 
     return {
-        "decision": (
-            "deploy_quality_lagf"
-            if keep_quality
-            else "deploy_no_gates_context"
-        ),
+        "decision": ("deploy_quality_lagf" if keep_quality else "deploy_no_gates_context"),
         "selected_model": "quality_lagf" if keep_quality else "no_gates",
         "decision_basis": (
             "Model structure and hyperparameters were frozen on validation only. "
@@ -752,34 +701,24 @@ def build_decision(
             "quality_bilingual_weighted_f1": selection["validation_weighted_f1"][
                 "bilingual_average"
             ],
-            "no_gates_bilingual_weighted_f1": selection["no_gate_comparison"][
-                "bilingual_average"
-            ],
+            "no_gates_bilingual_weighted_f1": selection["no_gate_comparison"]["bilingual_average"],
             "quality_minus_no_gates": validation_delta,
             "gain_at_least_0_5pp": validation_gain_pass,
         },
         "test": {
             "clean_quality_weighted_f1": quality_standard,
-            "clean_no_gates_weighted_f1": float(
-                clean["no_gates_weighted_f1_mean"]
-            ),
-            "clean_quality_minus_no_gates": float(
-                clean["quality_minus_no_gates"]
-            ),
+            "clean_no_gates_weighted_f1": float(clean["no_gates_weighted_f1_mean"]),
+            "clean_quality_minus_no_gates": float(clean["quality_minus_no_gates"]),
             "clean_delta_ci95": [
                 float(clean["ci95_lower"]),
                 float(clean["ci95_upper"]),
             ],
-            "video_25_quality_minus_no_gates": float(
-                video_25["quality_minus_no_gates"]
-            ),
+            "video_25_quality_minus_no_gates": float(video_25["quality_minus_no_gates"]),
             "video_25_delta_ci95": [
                 float(video_25["ci95_lower"]),
                 float(video_25["ci95_upper"]),
             ],
-            "video_50_quality_minus_no_gates": float(
-                video_50["quality_minus_no_gates"]
-            ),
+            "video_50_quality_minus_no_gates": float(video_50["quality_minus_no_gates"]),
             "video_50_delta_ci95": [
                 float(video_50["ci95_lower"]),
                 float(video_50["ci95_upper"]),
@@ -787,15 +726,9 @@ def build_decision(
             "quality_video_50_loss_from_clean": video_50_loss,
             "quality_missing_vision_loss_from_clean": missing_vision_loss,
             "video_50_not_worse_than_missing_vision": degraded_video_pass,
-            "whisper_quality_minus_no_gates": float(
-                whisper["quality_minus_no_gates"]
-            ),
-            "audio_10db_quality_minus_no_gates": float(
-                audio_10["quality_minus_no_gates"]
-            ),
-            "vision_only_quality_minus_no_gates": float(
-                vision_only["quality_minus_no_gates"]
-            ),
+            "whisper_quality_minus_no_gates": float(whisper["quality_minus_no_gates"]),
+            "audio_10db_quality_minus_no_gates": float(audio_10["quality_minus_no_gates"]),
+            "vision_only_quality_minus_no_gates": float(vision_only["quality_minus_no_gates"]),
         },
         "acceptance": {
             "validation_gain_at_least_0_5pp": validation_gain_pass,

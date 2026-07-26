@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Protocol, Sequence
 
@@ -24,7 +24,9 @@ def replace_text_with_asr(
         if record.video_path is None:
             raise ValueError(f"record {record.sample_id} has no video for ASR")
         _, segments = transcriber.transcribe(Path(record.video_path), record.language)
-        text = " ".join(segment.text.strip() for segment in segments if segment.text.strip()).strip()
+        text = " ".join(
+            segment.text.strip() for segment in segments if segment.text.strip()
+        ).strip()
         if not text:
             raise ValueError(f"ASR returned no text for {record.sample_id}")
         confidence_rows = [
@@ -32,11 +34,7 @@ def replace_text_with_asr(
             for segment in segments
             if segment.text.strip() and segment.asr_confidence is not None
         ]
-        confidence = (
-            sum(confidence_rows) / len(confidence_rows)
-            if confidence_rows
-            else 0.0
-        )
+        confidence = sum(confidence_rows) / len(confidence_rows) if confidence_rows else 0.0
         output.append(
             replace(
                 record,
@@ -62,15 +60,16 @@ def write_asr_manifest_incrementally(
     if len(completed) > len(source):
         raise ValueError("existing ASR manifest is longer than the source")
     for index, existing in enumerate(completed):
-        if replace(
-            existing,
-            text=source[index].text,
-            text_source=source[index].text_source,
-            asr_confidence=source[index].asr_confidence,
-        ) != source[index]:
-            raise ValueError(
-                f"existing ASR row {index + 1} does not match the source"
+        if (
+            replace(
+                existing,
+                text=source[index].text,
+                text_source=source[index].text_source,
+                asr_confidence=source[index].asr_confidence,
             )
+            != source[index]
+        ):
+            raise ValueError(f"existing ASR row {index + 1} does not match the source")
     for record in source[len(completed) :]:
         try:
             replaced = replace_text_with_asr([record], transcriber)[0]

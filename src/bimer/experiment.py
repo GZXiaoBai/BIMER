@@ -117,9 +117,7 @@ def run_experiment(
         raise ValueError("unknown experiment protocol_stage")
     if config.training_scope not in {"joint", "meld", "emotiontalk"}:
         raise ValueError("training_scope must be joint, meld, or emotiontalk")
-    if len(config.augmentation_manifests) != len(
-        config.augmentation_feature_roots
-    ):
+    if len(config.augmentation_manifests) != len(config.augmentation_feature_roots):
         raise ValueError(
             "augmentation_manifests and augmentation_feature_roots must have equal length"
         )
@@ -143,15 +141,11 @@ def run_experiment(
     if paired_requested and len(config.augmentation_modalities) != len(
         config.augmentation_manifests
     ):
-        raise ValueError(
-            "augmentation_modalities must identify every paired augmentation"
-        )
+        raise ValueError("augmentation_modalities must identify every paired augmentation")
     if config.augmentation_severities and len(config.augmentation_severities) != len(
         config.augmentation_manifests
     ):
-        raise ValueError(
-            "augmentation_severities must identify every paired augmentation"
-        )
+        raise ValueError("augmentation_severities must identify every paired augmentation")
     invalid_modalities = set(config.augmentation_modalities) - {
         "text",
         "audio",
@@ -163,9 +157,7 @@ def run_experiment(
     records = read_manifest(manifest_path)
     store = FeatureStore(feature_root)
     training_datasets = (
-        ("meld", "emotiontalk")
-        if config.training_scope == "joint"
-        else (config.training_scope,)
+        ("meld", "emotiontalk") if config.training_scope == "joint" else (config.training_scope,)
     )
     available_datasets = tuple(
         dataset
@@ -211,18 +203,18 @@ def run_experiment(
         for key, group in by_group.items()
     }
     clean_train_examples = [
-        example
-        for dataset in training_datasets
-        for example in examples[(dataset, "train")]
+        example for dataset in training_datasets for example in examples[(dataset, "train")]
     ]
     train_examples = list(clean_train_examples)
     augmentation_shards = []
     augmentation_summaries: list[dict[str, object]] = []
     corruption_pairs = []
-    for augmentation_index, (manifest_name, feature_name) in enumerate(zip(
-        config.augmentation_manifests,
-        config.augmentation_feature_roots,
-    )):
+    for augmentation_index, (manifest_name, feature_name) in enumerate(
+        zip(
+            config.augmentation_manifests,
+            config.augmentation_feature_roots,
+        )
+    ):
         augmentation_records = read_manifest(manifest_name)
         if any(str(record.split) != "train" for record in augmentation_records):
             raise ValueError("augmentation manifests may only contain training records")
@@ -239,22 +231,14 @@ def run_experiment(
         augmentation_store = FeatureStore(feature_name)
         view_examples = []
         for dataset in training_datasets:
-            group = [
-                record
-                for record in augmentation_records
-                if record.dataset == dataset
-            ]
+            group = [record for record in augmentation_records if record.dataset == dataset]
             if not group:
                 continue
             shards = augmentation_store.read_all(dataset, "train")
             if not shards:
-                raise ValueError(
-                    f"augmentation feature root has no {dataset} train shards"
-                )
+                raise ValueError(f"augmentation feature root has no {dataset} train shards")
             augmentation_shards.extend(shards)
-            view_examples.extend(
-                build_dialogue_examples(group, shards, overlap=8)
-            )
+            view_examples.extend(build_dialogue_examples(group, shards, overlap=8))
         if not view_examples:
             raise ValueError("augmentation manifest contains no usable training records")
         if paired_requested:
@@ -281,9 +265,7 @@ def run_experiment(
                 "examples": len(view_examples),
                 "paired": paired_requested,
                 "corrupted_modality": (
-                    config.augmentation_modalities[augmentation_index]
-                    if paired_requested
-                    else None
+                    config.augmentation_modalities[augmentation_index] if paired_requested else None
                 ),
             }
         )
@@ -342,16 +324,11 @@ def run_experiment(
     model = build_model(**model_config)
     if isinstance(model, NormalizedModel):
         normalization_shards = [
-            shard
-            for dataset in training_datasets
-            for shard in store.read_all(dataset, "train")
+            shard for dataset in training_datasets for shard in store.read_all(dataset, "train")
         ] + augmentation_shards
         model.set_statistics(compute_input_statistics(normalization_shards))
     output_root = (
-        Path(output_directory)
-        / config.model
-        / config.training_scope
-        / f"seed-{config.seed}"
+        Path(output_directory) / config.model / config.training_scope / f"seed-{config.seed}"
     )
     output_root.mkdir(parents=True, exist_ok=True)
     checkpoint_path = output_root / "best.pt"
@@ -408,12 +385,8 @@ def run_experiment(
             checkpoint_path,
         )
 
-    context_id_by_sample = {
-        record.sample_id: record.effective_context_id for record in records
-    }
-    language_by_sample = {
-        record.sample_id: str(record.language) for record in records
-    }
+    context_id_by_sample = {record.sample_id: record.effective_context_id for record in records}
+    language_by_sample = {record.sample_id: str(record.language) for record in records}
     validation_results: dict[str, object] = {}
     validation_prediction_directory = output_root / "validation_predictions"
     validation_prediction_directory.mkdir(parents=True, exist_ok=True)
@@ -500,9 +473,7 @@ def aggregate_seed_results(paths: Sequence[Path | str], output_path: Path | str)
     if not payloads:
         raise ValueError("at least one result path is required")
     datasets = tuple(
-        dataset
-        for dataset in ("meld", "emotiontalk")
-        if dataset in payloads[0]["test"]
+        dataset for dataset in ("meld", "emotiontalk") if dataset in payloads[0]["test"]
     )
     if any(set(payload["test"]) != set(datasets) for payload in payloads):
         raise ValueError("all seed results must contain the same test datasets")
@@ -548,9 +519,7 @@ def _normalize_missing_modalities(
     missing_modality: str | Sequence[str] | None,
 ) -> tuple[str, ...]:
     requested = (
-        (missing_modality,)
-        if isinstance(missing_modality, str)
-        else tuple(missing_modality or ())
+        (missing_modality,) if isinstance(missing_modality, str) else tuple(missing_modality or ())
     )
     allowed = ("text", "audio", "vision")
     invalid = set(requested) - set(allowed)
@@ -585,9 +554,7 @@ def evaluate_checkpoint(
         raise ValueError("evaluation_role must be validation or test")
     missing_modalities = _normalize_missing_modalities(missing_modality)
     if condition_name and missing_modalities:
-        raise ValueError(
-            "condition_name cannot be combined with missing_modality"
-        )
+        raise ValueError("condition_name cannot be combined with missing_modality")
     device = resolve_device(device_name)
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model_config = checkpoint.get("metadata", {}).get("model_config")
@@ -605,9 +572,7 @@ def evaluate_checkpoint(
     for dataset in ("meld", "emotiontalk"):
         split = _split_name(dataset, evaluation_role)
         group = [
-            record
-            for record in records
-            if record.dataset == dataset and str(record.split) == split
+            record for record in records if record.dataset == dataset and str(record.split) == split
         ]
         if not group:
             continue
@@ -620,9 +585,7 @@ def evaluate_checkpoint(
             examples = _without_modalities(examples, missing_modalities)
         loader = _loader(examples, batch_size=8)
         report = evaluate_batches(model, loader, device=device, label_names=EMOTION_LABELS)
-        context_id_by_sample = {
-            record.sample_id: record.effective_context_id for record in group
-        }
+        context_id_by_sample = {record.sample_id: record.effective_context_id for record in group}
         context_ids = np.asarray(
             [context_id_by_sample[sample_id] for sample_id in report.sample_ids],
             dtype=str,
@@ -654,11 +617,7 @@ def evaluate_checkpoint(
     payload = {
         "condition": (
             condition_name
-            or (
-                f"missing_{'_'.join(missing_modalities)}"
-                if missing_modalities
-                else "standard"
-            )
+            or (f"missing_{'_'.join(missing_modalities)}" if missing_modalities else "standard")
         ),
         "missing_modalities": list(missing_modalities),
         "manifest": str(manifest_path),

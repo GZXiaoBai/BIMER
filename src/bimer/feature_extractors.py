@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Sequence
 
 import numpy as np
 import torch
 from PIL import Image
 from torch import Tensor, nn
 
-from .robustness import drop_video_frames
 from .quality import vision_quality
-
+from .robustness import drop_video_frames
 
 WAV2VEC2_MIN_INPUT_SAMPLES = 400
 
@@ -27,9 +26,7 @@ def prepare_audio_waveforms(
     for waveform in waveforms:
         signal = np.asarray(waveform, dtype=np.float32).reshape(-1)
         is_available = signal.size >= minimum_samples
-        prepared.append(
-            signal if is_available else np.zeros(minimum_samples, dtype=np.float32)
-        )
+        prepared.append(signal if is_available else np.zeros(minimum_samples, dtype=np.float32))
         available.append(is_available)
     return prepared, np.asarray(available, dtype=np.bool_)
 
@@ -406,9 +403,7 @@ class VisionFeatureExtractor:
             for start in range(0, len(clips), batch_size)
         ]
         return (
-            np.concatenate(outputs)
-            if outputs
-            else np.empty((0, self.output_dim), dtype=np.float32)
+            np.concatenate(outputs) if outputs else np.empty((0, self.output_dim), dtype=np.float32)
         )
 
     def encode_frames(self, frames: np.ndarray) -> np.ndarray:

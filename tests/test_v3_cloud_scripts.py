@@ -1,13 +1,10 @@
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_validation_view_script_uses_only_official_validation_splits():
-    text = (ROOT / "scripts" / "prepare_v3_validation_views.sh").read_text(
-        encoding="utf-8"
-    )
+    text = (ROOT / "scripts" / "prepare_v3_validation_views.sh").read_text(encoding="utf-8")
 
     assert '"meld dev" "emotiontalk validation"' in text
     assert "--audio-snr 10" in text

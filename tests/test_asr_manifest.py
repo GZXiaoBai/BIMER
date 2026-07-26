@@ -1,6 +1,6 @@
-from pathlib import Path
-from dataclasses import replace
 import json
+from dataclasses import replace
+from pathlib import Path
 
 import pytest
 
@@ -69,9 +69,7 @@ def test_incremental_asr_manifest_resumes_verified_prefix(tmp_path):
             return language, [TranscriptSegment(0.0, 1.0, "new text")]
 
     transcriber = CountingTranscriber()
-    result = asr_manifest.write_asr_manifest_incrementally(
-        records, transcriber, output
-    )
+    result = asr_manifest.write_asr_manifest_incrementally(records, transcriber, output)
 
     assert transcriber.calls == [(records[1].video_path, "en")]
     assert [record.text for record in result] == ["already done", "new text"]
@@ -89,9 +87,7 @@ def test_incremental_asr_manifest_persists_completed_rows_on_failure(tmp_path):
             return language, [TranscriptSegment(0.0, 1.0, "saved")]
 
     with pytest.raises(RuntimeError, match="broken media"):
-        asr_manifest.write_asr_manifest_incrementally(
-            records, FailingTranscriber(), output
-        )
+        asr_manifest.write_asr_manifest_incrementally(records, FailingTranscriber(), output)
 
     saved = read_manifest(output)
     assert len(saved) == 1

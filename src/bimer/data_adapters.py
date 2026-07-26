@@ -101,9 +101,7 @@ def load_meld_csv(
         end_seconds = parse_timestamp(row["EndTime"])
         if end_seconds <= start_seconds:
             if not media_path.is_file():
-                raise ValueError(
-                    f"Invalid MELD timestamps and missing media {media_path}"
-                )
+                raise ValueError(f"Invalid MELD timestamps and missing media {media_path}")
             duration = duration_probe(media_path)
             if duration <= 0:
                 raise ValueError(f"Invalid MELD media duration for {media_path}")
@@ -227,13 +225,10 @@ def _find_emotiontalk_media_prefix(root: Path, relative_name: str) -> Path:
     matches = [
         candidate
         for candidate in root.rglob(relative.name)
-        if candidate.is_file()
-        and tuple(candidate.parts[-len(relative.parts) :]) == relative.parts
+        if candidate.is_file() and tuple(candidate.parts[-len(relative.parts) :]) == relative.parts
     ]
     if len(matches) != 1:
-        raise ValueError(
-            f"Cannot uniquely locate EmotionTalk media {relative_name!r} under {root}"
-        )
+        raise ValueError(f"Cannot uniquely locate EmotionTalk media {relative_name!r} under {root}")
     return matches[0].parents[len(relative.parts) - 1]
 
 
@@ -254,9 +249,7 @@ def load_emotiontalk_official_csv(
     if missing := label_columns - set(labels.columns):
         raise ValueError(f"EmotionTalk labels CSV missing columns: {sorted(missing)}")
     if missing := transcript_columns - set(transcripts.columns):
-        raise ValueError(
-            f"EmotionTalk transcriptions CSV missing columns: {sorted(missing)}"
-        )
+        raise ValueError(f"EmotionTalk transcriptions CSV missing columns: {sorted(missing)}")
 
     text_by_key: dict[str, str] = {}
     duplicate_transcripts: set[str] = set()
@@ -277,16 +270,12 @@ def load_emotiontalk_official_csv(
         raise ValueError("duplicate label rows: " + ", ".join(sorted(duplicates)[:5]))
     missing_text = [key for key in label_keys if key not in text_by_key]
     if missing_text:
-        raise ValueError(
-            "missing transcriptions: " + ", ".join(sorted(missing_text)[:5])
-        )
+        raise ValueError("missing transcriptions: " + ", ".join(sorted(missing_text)[:5]))
     if not label_rows:
         return []
 
     root = Path(media_root)
-    media_prefix = _find_emotiontalk_media_prefix(
-        root, str(label_rows[0]["file_name"])
-    )
+    media_prefix = _find_emotiontalk_media_prefix(root, str(label_rows[0]["file_name"]))
     if duration_workers <= 0:
         raise ValueError("duration_workers must be positive")
     resolved_rows: list[tuple[dict[str, Any], str, Path, list[str]]] = []
@@ -304,14 +293,10 @@ def load_emotiontalk_official_csv(
         resolved_rows.append((item, key, media_path, stem_parts))
 
     with ThreadPoolExecutor(max_workers=duration_workers) as executor:
-        durations = list(
-            executor.map(duration_probe, (row[2] for row in resolved_rows))
-        )
+        durations = list(executor.map(duration_probe, (row[2] for row in resolved_rows)))
 
     records: list[UtteranceRecord] = []
-    for (item, key, media_path, stem_parts), duration in zip(
-        resolved_rows, durations, strict=True
-    ):
+    for (item, key, media_path, stem_parts), duration in zip(resolved_rows, durations, strict=True):
         group = stem_parts[0]
         records.append(
             UtteranceRecord(
@@ -338,9 +323,7 @@ def check_official_split_counts(dataset: str, actual: dict[str, int]) -> None:
     for split, expected in EXPECTED_SPLIT_COUNTS[dataset].items():
         found = actual.get(split, 0)
         if found != expected:
-            raise ValueError(
-                f"{dataset} {split}: expected {expected}, found {found}"
-            )
+            raise ValueError(f"{dataset} {split}: expected {expected}, found {found}")
 
 
 def count_records(records: Iterable[UtteranceRecord]) -> dict[str, int]:

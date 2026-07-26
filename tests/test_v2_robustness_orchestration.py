@@ -1,9 +1,8 @@
 import os
-from pathlib import Path
 import shlex
 import subprocess
 import sys
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ORCHESTRATOR = ROOT / "scripts" / "run_v2_robustness.py"
@@ -56,9 +55,7 @@ def test_v2_robustness_matrix_covers_two_models_three_seeds_and_twelve_condition
         "missing-text-vision",
         "missing-text-audio",
     }
-    assert {
-        Path(output).parent.name for output in outputs
-    } == expected_conditions
+    assert {Path(output).parent.name for output in outputs} == expected_conditions
 
 
 def test_v2_robustness_uses_controlled_no_gate_checkpoints_and_valid_missing_flags(
@@ -90,34 +87,27 @@ def test_v2_robustness_uses_controlled_no_gate_checkpoints_and_valid_missing_fla
     missing = next(
         command
         for command in commands
-        if "/quality_lagf/missing-text-audio/"
-        in command[command.index("--output") + 1]
+        if "/quality_lagf/missing-text-audio/" in command[command.index("--output") + 1]
         and command[command.index("--output") + 1].endswith("seed-42.json")
     )
     assert "--condition-name" not in missing
     missing_values = [
-        missing[index + 1]
-        for index, value in enumerate(missing)
-        if value == "--missing"
+        missing[index + 1] for index, value in enumerate(missing) if value == "--missing"
     ]
     assert missing_values == ["text", "audio"]
 
     corrupted = next(
         command
         for command in commands
-        if "/quality_lagf/video_frame_drop_50pct/"
-        in command[command.index("--output") + 1]
+        if "/quality_lagf/video_frame_drop_50pct/" in command[command.index("--output") + 1]
         and command[command.index("--output") + 1].endswith("seed-42.json")
     )
-    assert corrupted[corrupted.index("--condition-name") + 1] == (
-        "video_frame_drop_50pct"
-    )
+    assert corrupted[corrupted.index("--condition-name") + 1] == ("video_frame_drop_50pct")
 
     whisper = next(
         command
         for command in commands
-        if "/quality_lagf/whisper_text/"
-        in command[command.index("--output") + 1]
+        if "/quality_lagf/whisper_text/" in command[command.index("--output") + 1]
         and command[command.index("--output") + 1].endswith("seed-42.json")
     )
     assert whisper[whisper.index("--manifest") + 1] == str(
@@ -141,10 +131,7 @@ def test_v2_robustness_reruns_incomplete_existing_output(tmp_path):
 
     commands = _dry_run(tmp_path)
 
-    assert any(
-        command[command.index("--output") + 1] == str(output)
-        for command in commands
-    )
+    assert any(command[command.index("--output") + 1] == str(output) for command in commands)
 
 
 def test_autodl_wrapper_prepares_views_and_packages_before_optional_shutdown(
@@ -158,9 +145,7 @@ def test_autodl_wrapper_prepares_views_and_packages_before_optional_shutdown(
     fake_bin.mkdir()
     (root / "scripts").mkdir(parents=True)
     (root / "configs").mkdir()
-    (root / "artifacts" / "experiments" / "v2" / "robustness").mkdir(
-        parents=True
-    )
+    (root / "artifacts" / "experiments" / "v2" / "robustness").mkdir(parents=True)
     (root / "configs" / "experiment-v2-selection.json").write_text(
         '{"status":"frozen"}\n',
         encoding="utf-8",
@@ -210,11 +195,5 @@ def test_autodl_wrapper_prepares_views_and_packages_before_optional_shutdown(
     assert archive.is_file()
     assert archive.with_suffix(archive.suffix + ".sha256").is_file()
     assert (
-        root
-        / "artifacts"
-        / "experiments"
-        / "v2"
-        / "robustness"
-        / "_status"
-        / "DOWNLOAD_READY"
+        root / "artifacts" / "experiments" / "v2" / "robustness" / "_status" / "DOWNLOAD_READY"
     ).is_file()

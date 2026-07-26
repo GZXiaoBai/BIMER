@@ -36,7 +36,9 @@ def build_dialogue_examples(
             )
 
     materialized = list(records)
-    missing = sorted(record.sample_id for record in materialized if record.sample_id not in feature_rows)
+    missing = sorted(
+        record.sample_id for record in materialized if record.sample_id not in feature_rows
+    )
     if missing:
         preview = ", ".join(missing[:3])
         raise ValueError(f"missing cached features for {len(missing)} records: {preview}")

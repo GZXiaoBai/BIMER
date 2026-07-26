@@ -20,9 +20,7 @@ def main() -> int:
     args = parser.parse_args()
     result = select_deployment_model(
         frozen_selection=json.loads(args.selection.read_text(encoding="utf-8")),
-        external_report=json.loads(
-            args.external_report.read_text(encoding="utf-8")
-        ),
+        external_report=json.loads(args.external_report.read_text(encoding="utf-8")),
         m2_report=json.loads(args.m2_report.read_text(encoding="utf-8")),
     )
     write_deployment_selection(result, args.output)

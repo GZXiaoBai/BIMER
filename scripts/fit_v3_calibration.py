@@ -37,9 +37,7 @@ def _reliability_points(probabilities, truth, bins=15):
     ):
         active = (confidence >= lower) & (confidence <= upper)
         if active.any():
-            points.append(
-                (float(confidence[active].mean()), float(correct[active].mean()))
-            )
+            points.append((float(confidence[active].mean()), float(correct[active].mean())))
     return np.asarray(points, dtype=np.float64)
 
 

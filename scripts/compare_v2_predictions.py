@@ -3,7 +3,6 @@ import argparse
 
 from bimer.prediction_comparison import compare_prediction_archives
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--baseline", required=True)
 parser.add_argument("--candidate", required=True)

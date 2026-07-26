@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence, TypeVar
 
-
 RecordT = TypeVar("RecordT")
 
 
@@ -32,14 +31,9 @@ def resolve_shard_range(
     if start_shard is None and end_shard is None:
         return ShardRange(0, total_shards, total_shards)
     if start_shard is None or end_shard is None:
-        raise ValueError(
-            "start-shard and end-shard must be supplied together"
-        )
+        raise ValueError("start-shard and end-shard must be supplied together")
     if not 0 <= start_shard < end_shard <= total_shards:
-        raise ValueError(
-            "shard range must satisfy "
-            f"0 <= start < end <= {total_shards}"
-        )
+        raise ValueError(f"shard range must satisfy 0 <= start < end <= {total_shards}")
     return ShardRange(start_shard, end_shard, total_shards)
 
 
@@ -49,9 +43,7 @@ def slice_shard_range(
     start_shard: int | None,
     end_shard: int | None,
 ) -> tuple[list[RecordT], ShardRange]:
-    resolved = resolve_shard_range(
-        len(records), shard_size, start_shard, end_shard
-    )
+    resolved = resolve_shard_range(len(records), shard_size, start_shard, end_shard)
     start = resolved.start * shard_size
     end = min(resolved.end * shard_size, len(records))
     return list(records[start:end]), resolved

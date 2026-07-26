@@ -3,10 +3,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 import torch
-import bimer.inference as inference
 
+import bimer.inference as inference
 from bimer.baselines import EarlyFusionMLP
-from bimer.model import FusionOutput
+from bimer.calibration import (
+    CalibrationProfile,
+    LanguageCalibration,
+)
 from bimer.inference import (
     DialogueAnalyzer,
     FeatureBundle,
@@ -14,10 +17,7 @@ from bimer.inference import (
     normalize_transcript_segments,
     validate_video_input,
 )
-from bimer.calibration import (
-    CalibrationProfile,
-    LanguageCalibration,
-)
+from bimer.model import FusionOutput
 from bimer.runtime_cache import RuntimeFeatureCache
 
 
@@ -101,9 +101,7 @@ def test_dialogue_analyzer_returns_public_analysis_result(tmp_path):
         "fear",
         "disgust",
     }
-    assert result.segments[0].modality_available == {
-        "text": True, "audio": True, "vision": True
-    }
+    assert result.segments[0].modality_available == {"text": True, "audio": True, "vision": True}
     assert set(result.segments[0].modality_quality) == {"text", "audio", "vision"}
     assert result.segments[0].raw_probabilities == result.segments[0].probabilities
     assert result.model_version == "v2"
@@ -210,13 +208,10 @@ def test_long_dialogue_inference_uses_32_sentence_overlapping_windows(tmp_path):
         validator=lambda _: None,
     )
     segments = [
-        TranscriptSegment(float(index), float(index + 1), f"line {index}")
-        for index in range(70)
+        TranscriptSegment(float(index), float(index + 1), f"line {index}") for index in range(70)
     ]
 
-    result = analyzer.analyze_segments(
-        video, detected_language="en", segments=segments
-    )
+    result = analyzer.analyze_segments(video, detected_language="en", segments=segments)
 
     assert len(result.segments) == 70
     assert model.lengths == [32, 32, 22]
@@ -274,9 +269,7 @@ def test_pretrained_pipeline_decodes_audio_once_and_emits_quality(monkeypatch):
     assert audio.lengths == [32000, 32000]
     assert bundle.modality_quality.shape == (2, 3, 4)
     assert bundle.modality_quality[0, 0, :2].tolist() == pytest.approx([0.0, 0.8])
-    assert bundle.modality_quality[0, 2].tolist() == pytest.approx(
-        [1.0, 1.0, 1.0, 0.25]
-    )
+    assert bundle.modality_quality[0, 2].tolist() == pytest.approx([1.0, 1.0, 1.0, 0.25])
 
 
 def test_pretrained_pipeline_rejects_silent_audio(monkeypatch):
@@ -301,17 +294,17 @@ def test_pretrained_pipeline_rejects_silent_audio(monkeypatch):
         pipeline.extract(Path("silent.mp4"), [TranscriptSegment(0.0, 2.0, "text")])
 
 
-def test_pretrained_pipeline_text_edit_reuses_cached_audio_and_vision(
-    tmp_path, monkeypatch
-):
+def test_pretrained_pipeline_text_edit_reuses_cached_audio_and_vision(tmp_path, monkeypatch):
     video = tmp_path / "sample.mp4"
     video.write_bytes(b"video")
     calls = {"text": 0, "audio_decode": 0, "audio": 0, "vision": 0}
     monkeypatch.setattr(
         inference,
         "_extract_full_waveform",
-        lambda _path: calls.__setitem__("audio_decode", calls["audio_decode"] + 1)
-        or np.full(32000, 0.1, dtype=np.float32),
+        lambda _path: (
+            calls.__setitem__("audio_decode", calls["audio_decode"] + 1)
+            or np.full(32000, 0.1, dtype=np.float32)
+        ),
     )
 
     class Text:

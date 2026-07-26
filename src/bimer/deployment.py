@@ -5,7 +5,7 @@ import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, cast
 
 import torch
 
@@ -87,22 +87,18 @@ class RuntimeSettings:
     @classmethod
     def from_mapping(cls, value: Mapping[str, object]) -> RuntimeSettings:
         settings = cls(
-            window_size=int(value.get("window_size", 32)),
-            window_overlap=int(value.get("window_overlap", 8)),
+            window_size=int(cast(int, value.get("window_size", 32))),
+            window_overlap=int(cast(int, value.get("window_overlap", 8))),
             cache_directory=_relative_path(
                 value.get("cache_directory", "artifacts/runtime-cache"),
                 field="runtime.cache_directory",
             ),
-            minimum_free_bytes=int(
-                value.get("minimum_free_bytes", 2 * 1024**3)
-            ),
+            minimum_free_bytes=int(cast(int, value.get("minimum_free_bytes", 2 * 1024**3))),
         )
         if settings.window_size <= 0:
             raise ValueError("runtime.window_size must be positive")
         if not 0 <= settings.window_overlap < settings.window_size:
-            raise ValueError(
-                "runtime.window_overlap must be smaller than window_size"
-            )
+            raise ValueError("runtime.window_overlap must be smaller than window_size")
         if settings.minimum_free_bytes < 0:
             raise ValueError("runtime.minimum_free_bytes must be non-negative")
         return settings
@@ -136,9 +132,7 @@ class DeploymentManifest:
         if not isinstance(encoder_payload, dict):
             raise ValueError("deployment encoders must be an object")
         if set(encoder_payload) != set(_ENCODER_NAMES):
-            raise ValueError(
-                "deployment encoders must contain text, audio, vision, and asr"
-            )
+            raise ValueError("deployment encoders must contain text, audio, vision, and asr")
         encoders = {
             name: EncoderReference.from_mapping(
                 encoder_payload[name],
@@ -153,9 +147,7 @@ class DeploymentManifest:
                 continue
             path_key = key.removesuffix("_sha256")
             if path_key not in provenance:
-                raise ValueError(
-                    f"provenance.{key} has no matching provenance.{path_key}"
-                )
+                raise ValueError(f"provenance.{key} has no matching provenance.{path_key}")
             _relative_path(
                 provenance[path_key],
                 field=f"provenance.{path_key}",
@@ -291,9 +283,7 @@ def verify_deployment(
     else:
         checks["disk_space"] = "ok"
 
-    mps_available = bool(
-        hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
-    )
+    mps_available = bool(hasattr(torch.backends, "mps") and torch.backends.mps.is_available())
     checks["mps"] = "available" if mps_available else "unavailable"
     if not mps_available:
         warnings.append("MPS is unavailable; runtime will fall back to CPU")

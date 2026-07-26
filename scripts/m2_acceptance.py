@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
 import json
-from pathlib import Path
-import time
 import subprocess
+import time
+from dataclasses import replace
+from pathlib import Path
 
 from bimer.export import (
     export_analysis_csv,
@@ -63,8 +63,7 @@ def main() -> int:
     export_analysis_csv(edited_result, output / "analysis.csv")
     export_analysis_figure(edited_result, output / "analysis.png")
     no_face_disabled = all(
-        not segment.modality_available.get("vision", False)
-        for segment in english.segments
+        not segment.modality_available.get("vision", False) for segment in english.segments
     )
     error_root = args.output / "error-inputs"
     error_root.mkdir(parents=True, exist_ok=True)

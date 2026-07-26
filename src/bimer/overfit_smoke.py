@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import random
+from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
 import numpy as np
@@ -22,7 +22,6 @@ from .training import (
     train_epoch,
 )
 
-
 MODALITIES = ("text", "audio", "vision")
 
 
@@ -40,9 +39,7 @@ def build_overfit_example(
     if sample_count <= 0:
         raise ValueError("sample_count must be positive")
     selected_records = [
-        record
-        for record in records
-        if record.dataset == dataset and str(record.split) == split
+        record for record in records if record.dataset == dataset and str(record.split) == split
     ]
     record_by_id = {record.sample_id: record for record in selected_records}
     if len(record_by_id) != len(selected_records):
@@ -84,10 +81,7 @@ def build_overfit_example(
         if len(rows) == sample_count:
             break
     if len(rows) != sample_count:
-        raise ValueError(
-            f"only {len(rows)} {modality} rows are available; "
-            f"{sample_count} required"
-        )
+        raise ValueError(f"only {len(rows)} {modality} rows are available; {sample_count} required")
 
     languages = {str(row[0].language) for row in rows}
     if len(languages) != 1:
@@ -99,17 +93,13 @@ def build_overfit_example(
         audio=np.stack([row[2] for row in rows]).astype(np.float32),
         vision=np.stack([row[3] for row in rows]).astype(np.float32),
         modality_mask=np.stack([row[4] for row in rows]).astype(np.bool_),
-        labels=np.asarray(
-            [emotion_index(str(row[0].emotion)) for row in rows], dtype=np.int64
-        ),
+        labels=np.asarray([emotion_index(str(row[0].emotion)) for row in rows], dtype=np.int64),
         language_id=0 if next(iter(languages)) == "en" else 1,
     )
 
 
 @torch.no_grad()
-def _batch_loss(
-    model: nn.Module, batch: MultimodalBatch, *, device: torch.device
-) -> float:
+def _batch_loss(model: nn.Module, batch: MultimodalBatch, *, device: torch.device) -> float:
     model.eval()
     device_batch = batch.to(device)
     output = model(**device_batch.model_inputs())
@@ -175,9 +165,7 @@ def run_unimodal_overfit_smoke(
             num_classes=len(EMOTION_LABELS),
             dropout=0.0,
         ).to(device)
-        optimizer = torch.optim.AdamW(
-            model.parameters(), lr=learning_rate, weight_decay=0.0
-        )
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.0)
         initial_loss = _batch_loss(model, batch, device=device)
         accuracy = 0.0
         epochs = 0

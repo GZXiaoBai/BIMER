@@ -62,9 +62,9 @@ def export_analysis_csv(result: AnalysisResult, output_path: Path | str) -> Path
             for name in ("text", "audio", "vision"):
                 row[f"available_{name}"] = segment.modality_available.get(name, False)
                 for field in MODALITY_QUALITY_NAMES[name]:
-                    row[f"quality_{name}_{field}"] = segment.modality_quality.get(
-                        name, {}
-                    ).get(field, 0.0)
+                    row[f"quality_{name}_{field}"] = segment.modality_quality.get(name, {}).get(
+                        field, 0.0
+                    )
             for label in EMOTION_LABELS:
                 row[f"probability_{label}"] = segment.probabilities.get(label, 0.0)
                 row[f"raw_probability_{label}"] = segment.raw_probabilities.get(label, 0.0)

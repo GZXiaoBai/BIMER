@@ -1,9 +1,9 @@
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from functools import partial
 import json
 import multiprocessing
 import subprocess
 import threading
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from functools import partial
 
 import numpy as np
 import pytest
@@ -11,8 +11,9 @@ import torch
 
 import bimer.feature_extractors as feature_extractors
 import bimer.parallel_feature_extraction as parallel_feature_extraction
+from bimer.feature_extraction_runner import DatasetFeatureExtractionRunner, load_full_waveform
 from bimer.feature_store import FeatureStore
-from bimer.feature_extraction_runner import DatasetFeatureExtractionRunner
+from bimer.modality_store import ModalityShard, ModalityStore
 from bimer.parallel_feature_extraction import (
     CpuWorkerError,
     ParallelFeatureExtractionConfig,
@@ -21,12 +22,10 @@ from bimer.parallel_feature_extraction import (
     extract_audio_stage,
     extract_text_stage,
     extract_vision_stage,
-    prepare_video_worker,
     prefetched_map,
+    prepare_video_worker,
     record_shards,
 )
-from bimer.feature_extraction_runner import load_full_waveform
-from bimer.modality_store import ModalityShard, ModalityStore
 from bimer.schema import UtteranceRecord
 
 
@@ -98,19 +97,14 @@ class FakeVisionExtractor:
         del batch_size
         values = [int(clip[0, 0, 0, 0]) for clip in clips]
         self.encoded_values.extend(values)
-        return np.stack(
-            [np.full(512, value, dtype=np.float32) for value in values]
-        )
+        return np.stack([np.full(512, value, dtype=np.float32) for value in values])
 
 
 class FakeTextExtractor:
     def encode(self, texts, *, batch_size=64):
         del batch_size
         return np.stack(
-            [
-                np.full(768, int(text.rsplit(" ", 1)[1]) + 1, dtype=np.float32)
-                for text in texts
-            ]
+            [np.full(768, int(text.rsplit(" ", 1)[1]) + 1, dtype=np.float32) for text in texts]
         )
 
 
@@ -122,9 +116,7 @@ def test_encode_adaptive_halves_cuda_oom_batch():
 
 
 def test_record_shards_applies_global_offset():
-    shards = list(
-        record_shards(make_records(33), 16, shard_index_offset=120)
-    )
+    shards = list(record_shards(make_records(33), 16, shard_index_offset=120))
 
     assert [index for index, _, _ in shards] == [120, 121, 122]
     assert [len(chunk) for _, chunk, _ in shards] == [16, 16, 1]
@@ -283,9 +275,7 @@ def test_audio_stage_marks_sub_receptive_field_waveform_unavailable(tmp_path):
     )
 
     shard = ModalityStore(tmp_path, "audio", 1024).read(
-        ModalityStore(tmp_path, "audio", 1024).path(
-            "emotiontalk", "validation", 0
-        )
+        ModalityStore(tmp_path, "audio", 1024).path("emotiontalk", "validation", 0)
     )
     assert encoded_lengths == [400, 400]
     assert shard.available.tolist() == [False, True]
@@ -326,9 +316,7 @@ def test_audio_worker_marks_corrupt_media_unavailable(tmp_path, monkeypatch):
         del args, kwargs
         raise subprocess.CalledProcessError(1, ["ffmpeg"])
 
-    monkeypatch.setattr(
-        "bimer.feature_extraction_runner.subprocess.run", fail_decode
-    )
+    monkeypatch.setattr("bimer.feature_extraction_runner.subprocess.run", fail_decode)
 
     with pytest.warns(RuntimeWarning, match="Audio unavailable"):
         waveform = load_full_waveform(media)
@@ -352,9 +340,7 @@ def test_audio_noise_worker_uses_item_specific_seed(tmp_path, monkeypatch):
     monkeypatch.setattr("bimer.robustness.add_noise_at_snr", capture_noise)
 
     for path in paths:
-        parallel_feature_extraction.load_waveform_worker(
-            path, audio_snr=10.0, seed=42
-        )
+        parallel_feature_extraction.load_waveform_worker(path, audio_snr=10.0, seed=42)
 
     assert [item[0] for item in captured] == [10.0, 10.0]
     assert captured[0][1] != captured[1][1]
@@ -363,9 +349,7 @@ def test_audio_noise_worker_uses_item_specific_seed(tmp_path, monkeypatch):
 def test_vision_worker_marks_corrupt_media_unavailable(tmp_path, monkeypatch):
     media = tmp_path / "corrupt.mp4"
     media.touch()
-    monkeypatch.setattr(
-        parallel_feature_extraction, "_VISION_FACE_CROPPER", object()
-    )
+    monkeypatch.setattr(parallel_feature_extraction, "_VISION_FACE_CROPPER", object())
 
     def fail_decode(*args, **kwargs):
         del args, kwargs
@@ -386,9 +370,7 @@ def test_vision_drop_worker_uses_item_specific_seed(tmp_path, monkeypatch):
     for path in paths:
         path.touch()
     captured = []
-    monkeypatch.setattr(
-        parallel_feature_extraction, "_VISION_FACE_CROPPER", object()
-    )
+    monkeypatch.setattr(parallel_feature_extraction, "_VISION_FACE_CROPPER", object())
     monkeypatch.setattr(parallel_feature_extraction, "_VISION_FRAME_DROP", 0.25)
     monkeypatch.setattr(parallel_feature_extraction, "_VISION_SEED", 42)
 
@@ -457,9 +439,7 @@ def test_vision_stage_propagates_continuous_quality(tmp_path):
     )
 
     shard = ModalityStore(tmp_path, "vision", 512).read(
-        ModalityStore(tmp_path, "vision", 512).path(
-            "emotiontalk", "validation", 0
-        )
+        ModalityStore(tmp_path, "vision", 512).path("emotiontalk", "validation", 0)
     )
     np.testing.assert_allclose(shard.quality[:, 0], [0.25, 0.5])
 
@@ -489,9 +469,7 @@ def test_audio_stage_records_correct_sample_for_later_shard_failure(tmp_path):
     error = json.loads(error_path.read_text(encoding="utf-8").splitlines()[-1])
     assert error["modality"] == "audio"
     assert error["sample_id"] == records[3].sample_id
-    assert not ModalityStore(tmp_path, "audio", 1024).path(
-        "emotiontalk", "validation", 1
-    ).exists()
+    assert not ModalityStore(tmp_path, "audio", 1024).path("emotiontalk", "validation", 1).exists()
 
 
 def test_parallel_runner_overlaps_branches_and_merges_after_both(tmp_path):
@@ -678,9 +656,7 @@ def _combine_shards(store, dataset="emotiontalk", split="validation"):
         "text": np.concatenate([shard.text for shard in shards]),
         "audio": np.concatenate([shard.audio for shard in shards]),
         "vision": np.concatenate([shard.vision for shard in shards]),
-        "modality_mask": np.concatenate(
-            [shard.modality_mask for shard in shards]
-        ),
+        "modality_mask": np.concatenate([shard.modality_mask for shard in shards]),
     }
 
 
@@ -736,9 +712,7 @@ def test_parallel_features_match_serial_for_sixteen_samples(tmp_path):
     np.testing.assert_array_equal(new["sample_ids"], old["sample_ids"])
     np.testing.assert_array_equal(new["modality_mask"], old["modality_mask"])
     for modality in ("text", "audio", "vision"):
-        np.testing.assert_allclose(
-            new[modality], old[modality], rtol=1e-4, atol=1e-5
-        )
+        np.testing.assert_allclose(new[modality], old[modality], rtol=1e-4, atol=1e-5)
 
 
 def test_verified_final_shards_skip_all_parallel_factories(tmp_path):
@@ -771,6 +745,4 @@ def test_verified_final_shards_skip_all_parallel_factories(tmp_path):
 
     for path in (staging_root / "staging").rglob("*.npz"):
         path.unlink()
-    assert runner.run(records, final_store) == [
-        final_store.path("emotiontalk", "validation", 0)
-    ]
+    assert runner.run(records, final_store) == [final_store.path("emotiontalk", "validation", 0)]

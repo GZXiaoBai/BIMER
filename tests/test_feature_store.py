@@ -3,8 +3,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from bimer.feature_store import FeatureShard, FeatureStore
 from bimer.feature_extraction_runner import DatasetFeatureExtractionRunner
+from bimer.feature_store import FeatureShard, FeatureStore
 from bimer.schema import UtteranceRecord
 
 

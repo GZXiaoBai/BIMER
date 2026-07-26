@@ -41,9 +41,7 @@ def test_emotiontalk_kaggle_script_dry_run_is_minimal_and_secret_safe(tmp_path):
 def test_emotiontalk_kaggle_script_keeps_large_raw_files_out_of_working():
     project_root = Path(__file__).parents[1]
     clean_environment = {
-        key: value
-        for key, value in os.environ.items()
-        if key not in {"RAW_ROOT", "OUTPUT_ROOT"}
+        key: value for key, value in os.environ.items() if key not in {"RAW_ROOT", "OUTPUT_ROOT"}
     }
     result = subprocess.run(
         ["bash", str(project_root / "scripts" / "prepare_emotiontalk_kaggle.sh")],
@@ -73,9 +71,7 @@ def test_emotiontalk_download_retries_transient_failure_with_bounded_attempts(
 
     (raw_root / "raw" / "emotiontalk").mkdir(parents=True)
     (raw_root / "raw" / "emotiontalk" / ".multimodal-extracted").touch()
-    (raw_root / "sources" / "emotiontalk-official" / ".git").mkdir(
-        parents=True
-    )
+    (raw_root / "sources" / "emotiontalk-official" / ".git").mkdir(parents=True)
 
     _write_executable(
         fake_bin / "hf",
@@ -156,9 +152,7 @@ def test_emotiontalk_download_reports_partial_file_throughput(tmp_path):
 
     (raw_root / "raw" / "emotiontalk").mkdir(parents=True)
     (raw_root / "raw" / "emotiontalk" / ".multimodal-extracted").touch()
-    (raw_root / "sources" / "emotiontalk-official" / ".git").mkdir(
-        parents=True
-    )
+    (raw_root / "sources" / "emotiontalk-official" / ".git").mkdir(parents=True)
 
     _write_executable(
         fake_bin / "hf",
@@ -386,9 +380,7 @@ def test_kaggle_guide_pins_transformers_and_uses_durable_feature_storage():
 
 def test_yunet_download_uses_kaggle_safe_url_and_verifies_checksum():
     project_root = Path(__file__).parents[1]
-    script = (project_root / "scripts" / "download_yunet.sh").read_text(
-        encoding="utf-8"
-    )
+    script = (project_root / "scripts" / "download_yunet.sh").read_text(encoding="utf-8")
 
     assert "media.githubusercontent.com/media/opencv/opencv_zoo" in script
     assert "curl --ipv4" in script

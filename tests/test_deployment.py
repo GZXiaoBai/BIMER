@@ -80,6 +80,58 @@ def test_manifest_rejects_absolute_artifact_paths(tmp_path: Path) -> None:
         DeploymentManifest.load(_write_manifest(tmp_path, payload))
 
 
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        ({"schema_version": 2}, "schema_version"),
+        ({"labels": ["neutral"]}, "label order"),
+        ({"encoders": []}, "encoders must be an object"),
+    ],
+)
+def test_manifest_rejects_incompatible_public_contracts(
+    tmp_path: Path,
+    change: dict[str, object],
+    message: str,
+) -> None:
+    payload = _manifest_payload()
+    payload.update(change)
+
+    with pytest.raises(ValueError, match=message):
+        DeploymentManifest.load(_write_manifest(tmp_path, payload))
+
+
+@pytest.mark.parametrize(
+    ("runtime", "message"),
+    [
+        ({"window_size": 0}, "window_size"),
+        ({"window_size": 32, "window_overlap": 32}, "window_overlap"),
+        ({"minimum_free_bytes": -1}, "minimum_free_bytes"),
+    ],
+)
+def test_manifest_rejects_invalid_runtime_settings(
+    tmp_path: Path,
+    runtime: dict[str, object],
+    message: str,
+) -> None:
+    payload = _manifest_payload()
+    payload["runtime"] = runtime
+
+    with pytest.raises(ValueError, match=message):
+        DeploymentManifest.load(_write_manifest(tmp_path, payload))
+
+
+def test_manifest_rejects_invalid_hash_and_incomplete_provenance(tmp_path: Path) -> None:
+    payload = _manifest_payload()
+    payload["checkpoint"] = {"path": "checkpoint.pt", "sha256": "not-a-digest"}
+    with pytest.raises(ValueError, match="SHA-256"):
+        DeploymentManifest.load(_write_manifest(tmp_path, payload))
+
+    payload = _manifest_payload()
+    payload["provenance"] = {"selection_config_sha256": _sha256(b"selection")}
+    with pytest.raises(ValueError, match="no matching"):
+        DeploymentManifest.load(_write_manifest(tmp_path, payload))
+
+
 def test_offline_verification_checks_hashes_assets_and_tools(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -178,3 +230,31 @@ def test_verification_checks_provenance_files_declared_in_manifest(
     )
     assert not broken.ok
     assert "selection_config provenance SHA-256 mismatch" in broken.errors
+
+
+def test_verification_reports_missing_files_tools_and_disk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _manifest_payload()
+    payload["calibration"] = {
+        "path": "private/calibration.json",
+        "sha256": _sha256(b"calibration"),
+    }
+    payload["provenance"] = {
+        "selection_config": "private/selection.json",
+        "selection_config_sha256": _sha256(b"selection"),
+    }
+    payload["runtime"] = {"minimum_free_bytes": 2**63}
+    manifest = DeploymentManifest.load(_write_manifest(tmp_path, payload))
+    monkeypatch.setattr("bimer.deployment.shutil.which", lambda _name: None)
+
+    report = verify_deployment(manifest, artifact_root=tmp_path, offline=False)
+
+    assert not report.ok
+    assert report.checks["checkpoint_file"] == "missing"
+    assert report.checks["calibration_file"] == "missing"
+    assert report.checks["provenance_selection_config_sha256"] == "missing"
+    assert report.checks["ffmpeg"] == "missing"
+    assert report.checks["disk_space"] == "insufficient"
+    assert report.to_dict()["ok"] is False

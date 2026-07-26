@@ -1,12 +1,10 @@
 import csv
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
-
 from test_v2_formal_summary import _build_complete_fixture
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "paired_cluster_bootstrap_v2.py"
@@ -18,9 +16,7 @@ def _add_predictions(results_root: Path) -> None:
     context_ids = np.asarray(["dialogue-1", "dialogue-1", "dialogue-2", "dialogue-2"])
     for result_path in results_root.glob("**/results.json"):
         prediction = (
-            truth.copy()
-            if "/formal/quality_lagf/" in str(result_path)
-            else np.zeros_like(truth)
+            truth.copy() if "/formal/quality_lagf/" in str(result_path) else np.zeros_like(truth)
         )
         prediction_dir = result_path.parent / "predictions"
         prediction_dir.mkdir(parents=True, exist_ok=True)
@@ -81,11 +77,7 @@ def test_cli_rejects_misaligned_prediction_ids(tmp_path):
     output = tmp_path / "paired_cluster_bootstrap.csv"
     _build_complete_fixture(results)
     _add_predictions(results)
-    target = next(
-        (results / "formal" / "early_mlp").glob(
-            "**/seed-42/predictions/meld.npz"
-        )
-    )
+    target = next((results / "formal" / "early_mlp").glob("**/seed-42/predictions/meld.npz"))
     with np.load(target) as payload:
         arrays = {key: payload[key] for key in payload.files}
     arrays["sample_ids"] = np.asarray(["a", "b", "c", "wrong"])

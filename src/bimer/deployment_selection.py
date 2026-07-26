@@ -16,9 +16,7 @@ def select_deployment_model(
         and frozen_selection.get("version") == "v3"
         and float(frozen_selection.get("gate_ranking_weight", 0.0)) > 0
     )
-    external_passed = bool(
-        external_report.get("v3_acceptance", {}).get("accepted", False)
-    )
+    external_passed = bool(external_report.get("v3_acceptance", {}).get("accepted", False))
     m2_passed = bool(m2_report.get("passed", False))
     checks = {
         "validation_ranking_passed": validation_passed,

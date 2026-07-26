@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
-
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "summarize_v2_robustness_results.py"
@@ -29,17 +28,11 @@ def _fixture(root: Path) -> tuple[Path, Path]:
     selection = root / "selection.json"
     truth = np.asarray([0, 1, 0, 1], dtype=np.int64)
     sample_ids = np.asarray(["a", "b", "c", "d"])
-    context_ids = np.asarray(
-        ["dialogue-1", "dialogue-1", "dialogue-2", "dialogue-2"]
-    )
+    context_ids = np.asarray(["dialogue-1", "dialogue-1", "dialogue-2", "dialogue-2"])
     for model in module.MODELS:
         for condition in module.CONDITION_META:
             for seed in module.SEEDS:
-                prediction = (
-                    truth.copy()
-                    if model == "quality_lagf"
-                    else np.zeros_like(truth)
-                )
+                prediction = truth.copy() if model == "quality_lagf" else np.zeros_like(truth)
                 weighted_f1 = 1.0 if model == "quality_lagf" else 1 / 3
                 output = results / model / condition / f"seed-{seed}.json"
                 output.parent.mkdir(parents=True, exist_ok=True)
@@ -50,9 +43,7 @@ def _fixture(root: Path) -> tuple[Path, Path]:
                                 dataset: {
                                     "weighted_f1": weighted_f1,
                                     "macro_f1": weighted_f1,
-                                    "accuracy": float(
-                                        np.mean(prediction == truth)
-                                    ),
+                                    "accuracy": float(np.mean(prediction == truth)),
                                 }
                                 for dataset in module.DATASETS
                             }
@@ -60,12 +51,7 @@ def _fixture(root: Path) -> tuple[Path, Path]:
                     ),
                     encoding="utf-8",
                 )
-                prediction_dir = (
-                    results
-                    / model
-                    / condition
-                    / f"seed-{seed}.predictions"
-                )
+                prediction_dir = results / model / condition / f"seed-{seed}.predictions"
                 prediction_dir.mkdir(parents=True, exist_ok=True)
                 for dataset in module.DATASETS:
                     np.savez_compressed(

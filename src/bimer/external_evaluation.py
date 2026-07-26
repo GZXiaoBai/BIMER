@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import json
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Sequence
 
@@ -50,13 +50,11 @@ def validate_external_video_plan(
         ):
             raise ValueError("external video sha256 must be a lowercase digest")
     by_language = {
-        language: sum(video.language == language for video in videos)
-        for language in ("en", "zh")
+        language: sum(video.language == language for video in videos) for language in ("en", "zh")
     }
     by_language_condition = {
         f"{language}:{condition}": sum(
-            video.language == language and video.condition == condition
-            for video in videos
+            video.language == language and video.condition == condition for video in videos
         )
         for language in ("en", "zh")
         for condition in EXTERNAL_CONDITIONS
@@ -159,9 +157,7 @@ def evaluate_external_predictions(
     scores = np.asarray(probabilities, dtype=np.float64)
     clusters = np.asarray(video_ids, dtype=str)
     condition_values = np.asarray(conditions, dtype=str)
-    if not (
-        labels.shape == clusters.shape == condition_values.shape == (len(scores),)
-    ):
+    if not (labels.shape == clusters.shape == condition_values.shape == (len(scores),)):
         raise ValueError("external prediction arrays must align")
     if bootstrap_iterations <= 0:
         raise ValueError("bootstrap_iterations must be positive")

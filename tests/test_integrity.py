@@ -20,9 +20,7 @@ def test_manifest_uses_sorted_portable_paths_without_duplicates(tmp_path: Path) 
     )
 
     assert [entry.path for entry in entries] == ["nested/a.txt", "z.txt"]
-    assert entries[0].sha256 == (
-        "a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e"
-    )
+    assert entries[0].sha256 == ("a7937b64b8caa58f03721bb6bacf5c78cb235febe0e70b1b84cd99541461a08e")
 
 
 def test_written_manifest_can_be_verified_and_detects_changes(tmp_path: Path) -> None:

@@ -23,15 +23,11 @@ def compare_prediction_archives(
         candidate = {name: payload[name] for name in payload.files}
     baseline_ids = baseline["sample_ids"].astype(str)
     candidate_ids = candidate["sample_ids"].astype(str)
-    if len(set(baseline_ids)) != len(baseline_ids) or len(set(candidate_ids)) != len(
-        candidate_ids
-    ):
+    if len(set(baseline_ids)) != len(baseline_ids) or len(set(candidate_ids)) != len(candidate_ids):
         raise ValueError("prediction archives contain duplicate sample IDs")
     if set(baseline_ids) != set(candidate_ids):
         raise ValueError("prediction archives contain different sample IDs")
-    candidate_position = {
-        sample_id: index for index, sample_id in enumerate(candidate_ids)
-    }
+    candidate_position = {sample_id: index for index, sample_id in enumerate(candidate_ids)}
     order = np.asarray([candidate_position[sample_id] for sample_id in baseline_ids])
     candidate_truth = candidate["truth"][order]
     candidate_contexts = candidate["context_ids"].astype(str)[order]

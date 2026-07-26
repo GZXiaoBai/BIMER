@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import subprocess
 import sys
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SUMMARY_SCRIPT = ROOT / "scripts" / "summarize_v2_robustness_results.py"
@@ -53,12 +52,8 @@ def test_report_builder_uses_canonical_snapshot_and_declares_decision(tmp_path):
     assert report.returncode == 0, report.stderr
     artifact = json.loads(output.read_text())
     assert artifact["manifest"]["title"] == "新版鲁棒性实验与最终模型选择"
-    assert artifact["manifest"]["blocks"][0]["body"].startswith(
-        "# 新版鲁棒性实验与最终模型选择"
-    )
-    assert artifact["manifest"]["charts"][0]["encodings"]["color"]["field"] == (
-        "model_zh"
-    )
+    assert artifact["manifest"]["blocks"][0]["body"].startswith("# 新版鲁棒性实验与最终模型选择")
+    assert artifact["manifest"]["charts"][0]["encodings"]["color"]["field"] == ("model_zh")
     assert artifact["manifest"]["tables"][0]["defaultSort"]["direction"] == "asc"
     assert isinstance(artifact["snapshot"]["datasets"]["comparison_table"], list)
     assert len(artifact["snapshot"]["datasets"]["comparison_table"]) == 12

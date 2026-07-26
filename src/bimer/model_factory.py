@@ -59,9 +59,7 @@ def build_model(
         )
     elif name in {"lagf", "quality_lagf"}:
         model_class = (
-            QualityAwareLanguageGatedFusion
-            if name == "quality_lagf"
-            else LanguageAwareGatedFusion
+            QualityAwareLanguageGatedFusion if name == "quality_lagf" else LanguageAwareGatedFusion
         )
         model = model_class(
             text_dim=text_dim,

@@ -63,9 +63,7 @@ def test_materialize_feature_subset_reorders_by_manifest_and_preserves_quality(t
     )
 
     output = FeatureStore(tmp_path / "subset")
-    paths = materialize_feature_subset(
-        [records[2], records[0]], base, output, shard_size=1
-    )
+    paths = materialize_feature_subset([records[2], records[0]], base, output, shard_size=1)
 
     assert len(paths) == 2
     merged = output.read_all("meld", "train")

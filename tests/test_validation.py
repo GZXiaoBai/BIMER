@@ -26,9 +26,7 @@ def test_validation_reports_duplicate_media_across_splits():
 
 
 def test_validation_accepts_unique_records_and_counts_labels():
-    report = validate_dataset_records(
-        [_record("train", 0, "a.mp4"), _record("test", 1, "b.mp4")]
-    )
+    report = validate_dataset_records([_record("train", 0, "a.mp4"), _record("test", 1, "b.mp4")])
     assert report.is_valid is True
     assert report.split_counts == {"train": 1, "test": 1}
     assert report.label_counts["neutral"] == 2

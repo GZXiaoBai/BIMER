@@ -2,7 +2,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -21,12 +20,8 @@ def test_m2_acceptance_uses_the_frozen_deployment_manifest_interface():
 
 
 def test_m2_acceptance_runner_enforces_time_memory_swap_and_exports():
-    python_text = (ROOT / "scripts" / "m2_acceptance.py").read_text(
-        encoding="utf-8"
-    )
-    shell_text = (ROOT / "scripts" / "run_m2_acceptance.sh").read_text(
-        encoding="utf-8"
-    )
+    python_text = (ROOT / "scripts" / "m2_acceptance.py").read_text(encoding="utf-8")
+    shell_text = (ROOT / "scripts" / "run_m2_acceptance.sh").read_text(encoding="utf-8")
 
     assert "<= 120" in python_text
     assert "<= 15" in python_text

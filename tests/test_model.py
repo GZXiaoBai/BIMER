@@ -20,9 +20,7 @@ def _inputs():
             ],
             dtype=torch.bool,
         ),
-        "attention_mask": torch.tensor(
-            [[1, 1, 1], [1, 1, 0]], dtype=torch.bool
-        ),
+        "attention_mask": torch.tensor([[1, 1, 1], [1, 1, 0]], dtype=torch.bool),
         "language_ids": torch.tensor([0, 1]),
     }
 

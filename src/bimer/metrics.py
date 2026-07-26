@@ -88,9 +88,7 @@ def cluster_bootstrap_weighted_f1(
                 average="weighted",
                 zero_division=0,
             )
-            for sample in _cluster_bootstrap_indices(
-                cluster_ids, iterations=iterations, seed=seed
-            )
+            for sample in _cluster_bootstrap_indices(cluster_ids, iterations=iterations, seed=seed)
         ],
         dtype=np.float64,
     )
@@ -107,15 +105,11 @@ def paired_cluster_bootstrap_weighted_f1_delta(
     iterations: int = 2000,
     seed: int = 42,
 ) -> tuple[float, float]:
-    lengths = {
-        len(truth), len(baseline_prediction), len(candidate_prediction), len(cluster_ids)
-    }
+    lengths = {len(truth), len(baseline_prediction), len(candidate_prediction), len(cluster_ids)}
     if len(lengths) != 1 or not len(truth):
         raise ValueError("paired bootstrap arrays must have equal non-zero length")
     deltas = []
-    for sample in _cluster_bootstrap_indices(
-        cluster_ids, iterations=iterations, seed=seed
-    ):
+    for sample in _cluster_bootstrap_indices(cluster_ids, iterations=iterations, seed=seed):
         baseline = f1_score(
             truth[sample], baseline_prediction[sample], average="weighted", zero_division=0
         )

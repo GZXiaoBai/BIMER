@@ -1,9 +1,12 @@
 import numpy as np
+import pytest
 
 from bimer.calibration import (
+    CalibrationProfile,
     apply_temperature,
     calibration_metrics,
     fit_calibration_profile,
+    fit_temperature,
     select_uncertainty_threshold,
 )
 
@@ -76,3 +79,57 @@ def test_uncertainty_threshold_requires_coverage_and_meaningful_accuracy_gain():
 
     assert 0.35 <= threshold <= 0.80
     assert float((confidence >= threshold).mean()) >= 0.70
+
+
+@pytest.mark.parametrize(
+    "probabilities",
+    [
+        np.asarray([0.5, 0.5]),
+        np.asarray([[0.5]]),
+        np.asarray([[np.nan, 0.5]]),
+        np.asarray([[-0.1, 1.1]]),
+        np.asarray([[0.0, 0.0]]),
+    ],
+)
+def test_probability_validation_rejects_invalid_inputs(probabilities):
+    with pytest.raises(ValueError):
+        apply_temperature(probabilities, 1.0)
+
+
+def test_temperature_and_metric_validation_rejects_invalid_arguments():
+    probabilities = np.asarray([[0.7, 0.3], [0.2, 0.8]])
+    with pytest.raises(ValueError, match="temperature"):
+        apply_temperature(probabilities, 0.0)
+    with pytest.raises(ValueError, match="truth"):
+        calibration_metrics(probabilities, np.asarray([0]))
+    with pytest.raises(ValueError, match="out-of-range"):
+        calibration_metrics(probabilities, np.asarray([0, 2]))
+    with pytest.raises(ValueError, match="bins"):
+        calibration_metrics(probabilities, np.asarray([0, 1]), bins=0)
+    with pytest.raises(ValueError, match="same length"):
+        fit_temperature(probabilities, np.asarray([0]))
+
+
+def test_calibration_profile_round_trip(tmp_path):
+    probabilities = np.asarray([[0.90, 0.10], [0.60, 0.40], [0.20, 0.80], [0.45, 0.55]])
+    truth = np.asarray([0, 1, 1, 0])
+    profile = fit_calibration_profile(
+        probabilities,
+        truth,
+        np.asarray(["zh", "zh", "en", "en"]),
+    )
+
+    path = profile.save(tmp_path / "nested" / "calibration.json")
+    restored = CalibrationProfile.load(path)
+
+    assert restored == profile
+    assert restored.to_dict() == profile.to_dict()
+
+
+def test_profile_rejects_misaligned_languages():
+    with pytest.raises(ValueError, match="align"):
+        fit_calibration_profile(
+            np.asarray([[0.7, 0.3], [0.2, 0.8]]),
+            np.asarray([0, 1]),
+            np.asarray(["en"]),
+        )

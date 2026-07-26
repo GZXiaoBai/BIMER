@@ -131,12 +131,8 @@ def test_cluster_bootstrap_resamples_complete_dialogues():
     prediction = np.array([0, 1, 0, 0])
     contexts = np.array(["d1", "d1", "d2", "d2"])
 
-    first = cluster_bootstrap_weighted_f1(
-        truth, prediction, contexts, iterations=100, seed=42
-    )
-    second = cluster_bootstrap_weighted_f1(
-        truth, prediction, contexts, iterations=100, seed=42
-    )
+    first = cluster_bootstrap_weighted_f1(truth, prediction, contexts, iterations=100, seed=42)
+    second = cluster_bootstrap_weighted_f1(truth, prediction, contexts, iterations=100, seed=42)
 
     assert first == second
     assert first[0] <= first[1]

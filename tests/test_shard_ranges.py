@@ -4,12 +4,8 @@ from bimer.shard_ranges import ShardRange, resolve_shard_range, slice_shard_rang
 
 
 def test_resolve_full_and_partial_shard_ranges():
-    assert resolve_shard_range(15413, 16, None, None) == ShardRange(
-        0, 964, 964
-    )
-    assert resolve_shard_range(15413, 16, 120, 240) == ShardRange(
-        120, 240, 964
-    )
+    assert resolve_shard_range(15413, 16, None, None) == ShardRange(0, 964, 964)
+    assert resolve_shard_range(15413, 16, 120, 240) == ShardRange(120, 240, 964)
 
 
 @pytest.mark.parametrize(

@@ -23,10 +23,13 @@ def _prediction(root: Path, variant: str, seed: int, dataset: str) -> Path:
 
 
 def _load_aligned(baseline_path: Path, candidate_path: Path):
-    with np.load(baseline_path, allow_pickle=False) as baseline, np.load(
-        candidate_path,
-        allow_pickle=False,
-    ) as candidate:
+    with (
+        np.load(baseline_path, allow_pickle=False) as baseline,
+        np.load(
+            candidate_path,
+            allow_pickle=False,
+        ) as candidate,
+    ):
         baseline_ids = baseline["sample_ids"].astype(str)
         candidate_ids = candidate["sample_ids"].astype(str)
         index = {sample_id: position for position, sample_id in enumerate(candidate_ids)}
@@ -82,9 +85,7 @@ def main() -> int:
     parser.add_argument("--iterations", type=int, default=2000)
     args = parser.parse_args()
     payloads = {
-        (variant, seed): json.loads(
-            _result(args.input, variant, seed).read_text(encoding="utf-8")
-        )
+        (variant, seed): json.loads(_result(args.input, variant, seed).read_text(encoding="utf-8"))
         for variant in VARIANTS
         for seed in SEEDS
     }
@@ -95,10 +96,7 @@ def main() -> int:
             summary["metrics"][variant][dataset] = {}
             for metric in ("weighted_f1", "macro_f1", "accuracy"):
                 values = np.asarray(
-                    [
-                        payloads[(variant, seed)]["test"][dataset][metric]
-                        for seed in SEEDS
-                    ],
+                    [payloads[(variant, seed)]["test"][dataset][metric] for seed in SEEDS],
                     dtype=np.float64,
                 )
                 summary["metrics"][variant][dataset][metric] = {

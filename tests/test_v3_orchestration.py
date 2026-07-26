@@ -1,9 +1,8 @@
 import json
-from pathlib import Path
 import shlex
 import subprocess
 import sys
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "run_v3_experiments.py"
@@ -28,11 +27,15 @@ def test_v3_loss_screen_is_seed42_validation_only():
     commands = _commands("--stage", "loss-screen")
 
     assert len(commands) == 3
-    assert all("--seed" in command and command[command.index("--seed") + 1] == "42" for command in commands)
+    assert all(
+        "--seed" in command and command[command.index("--seed") + 1] == "42" for command in commands
+    )
     assert all("--skip-test" in command and "--v3-screen" in command for command in commands)
-    assert {
-        command[command.index("--classification-loss") + 1] for command in commands
-    } == {"weighted_ce", "balanced_softmax", "focal"}
+    assert {command[command.index("--classification-loss") + 1] for command in commands} == {
+        "weighted_ce",
+        "balanced_softmax",
+        "focal",
+    }
     assert all(command.count("--augmentation-modality") == 3 for command in commands)
 
 
@@ -45,10 +48,11 @@ def test_v3_ranking_screen_uses_three_fixed_lambdas():
     )
 
     assert len(commands) == 3
-    assert {
-        float(command[command.index("--gate-ranking-weight") + 1])
-        for command in commands
-    } == {0.05, 0.10, 0.20}
+    assert {float(command[command.index("--gate-ranking-weight") + 1]) for command in commands} == {
+        0.05,
+        0.10,
+        0.20,
+    }
     assert all("--skip-test" in command and "--v3-screen" in command for command in commands)
 
 
@@ -74,9 +78,7 @@ def test_v3_formal_still_skips_test_and_uses_frozen_selection(tmp_path):
 
     assert len(commands) == 6
     assert all(
-        "--skip-test" in command
-        and "--v3-screen" not in command
-        and "--v3-formal" in command
+        "--skip-test" in command and "--v3-screen" not in command and "--v3-formal" in command
         for command in commands
     )
     assert {command[command.index("--seed") + 1] for command in commands} == {

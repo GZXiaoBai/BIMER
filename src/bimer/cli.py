@@ -1,29 +1,30 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
-from concurrent.futures import ProcessPoolExecutor
-from functools import partial
 import json
 import multiprocessing
-from pathlib import Path
 import time
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import replace
+from functools import partial
+from pathlib import Path
 
 import torch
 
 from .app import create_app
 from .asr_manifest import write_asr_manifest_incrementally
-from .data_adapters import (
-    check_official_split_counts,
-    count_records,
-    load_emotiontalk_official_csv,
-    load_emotiontalk_manifest,
-    load_meld_csv,
-)
 from .corruption_sampling import (
     materialize_feature_subset,
     select_stratified_context_records,
 )
+from .data_adapters import (
+    check_official_split_counts,
+    count_records,
+    load_emotiontalk_manifest,
+    load_emotiontalk_official_csv,
+    load_meld_csv,
+)
+from .deployment import DeploymentManifest, verify_deployment
 from .experiment import ExperimentConfig, evaluate_checkpoint, resolve_device, run_experiment
 from .export import export_analysis_csv, export_analysis_figure, export_analysis_json
 from .feature_extraction_runner import DatasetFeatureExtractionRunner, load_full_waveform
@@ -33,16 +34,16 @@ from .feature_extractors import (
     VisionFeatureExtractor,
     YuNetFaceCropper,
 )
-from .feature_store import FeatureStore
-from .modality_store import seed_staging_from_base_shard
 from .feature_statistics import compute_feature_statistics, write_feature_statistics
+from .feature_store import FeatureStore
 from .feature_verification import verify_feature_range, write_range_completion
 from .inference import (
     FasterWhisperTranscriber,
 )
+from .integrity import verify_sha256_manifest
 from .manifest import read_manifest, write_manifest
+from .modality_store import seed_staging_from_base_shard
 from .overfit_smoke import run_unimodal_overfit_smoke, write_overfit_smoke
-from .quality_attachment import QualityAttachmentRunner
 from .parallel_feature_extraction import (
     ParallelFeatureExtractionConfig,
     ParallelFeatureExtractionRunner,
@@ -51,15 +52,13 @@ from .parallel_feature_extraction import (
     measure_audio_quality_worker,
     measure_video_quality_worker,
     prepare_video_quality_worker,
-    prepare_video_worker,
     record_shards,
 )
+from .quality_attachment import QualityAttachmentRunner
 from .robustness import add_noise_at_snr, write_condition_provenance
+from .runtime import build_legacy_runtime, build_runtime
 from .shard_ranges import slice_shard_range
 from .validation import validate_dataset_records
-from .deployment import DeploymentManifest, verify_deployment
-from .integrity import verify_sha256_manifest
-from .runtime import build_legacy_runtime, build_runtime
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -94,9 +93,7 @@ def build_parser() -> argparse.ArgumentParser:
     asr_manifest = commands.add_parser("asr-manifest")
     asr_manifest.add_argument("--manifest", required=True)
     asr_manifest.add_argument("--output", required=True)
-    asr_manifest.add_argument(
-        "--dataset", choices=["meld", "emotiontalk"]
-    )
+    asr_manifest.add_argument("--dataset", choices=["meld", "emotiontalk"])
     asr_manifest.add_argument("--split")
     asr_manifest.add_argument("--device", default="cpu")
     asr_manifest.add_argument("--keep-original-on-error", action="store_true")
@@ -109,9 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
     verify_features = commands.add_parser("verify-features")
     verify_features.add_argument("--manifest", required=True)
     verify_features.add_argument("--features", required=True)
-    verify_features.add_argument(
-        "--dataset", choices=["meld", "emotiontalk"], required=True
-    )
+    verify_features.add_argument("--dataset", choices=["meld", "emotiontalk"], required=True)
     verify_features.add_argument("--split", required=True)
     verify_features.add_argument("--shard-size", type=int, required=True)
     verify_features.add_argument("--start-shard", type=int)
@@ -121,23 +116,17 @@ def build_parser() -> argparse.ArgumentParser:
     feature_stats = commands.add_parser("feature-stats")
     feature_stats.add_argument("--manifest", required=True)
     feature_stats.add_argument("--features", required=True)
-    feature_stats.add_argument(
-        "--dataset", choices=["meld", "emotiontalk"], required=True
-    )
+    feature_stats.add_argument("--dataset", choices=["meld", "emotiontalk"], required=True)
     feature_stats.add_argument("--split", required=True)
     feature_stats.add_argument("--output", required=True)
 
     overfit_smoke = commands.add_parser("overfit-smoke")
     overfit_smoke.add_argument("--manifest", required=True)
     overfit_smoke.add_argument("--features", required=True)
-    overfit_smoke.add_argument(
-        "--dataset", choices=["meld", "emotiontalk"], required=True
-    )
+    overfit_smoke.add_argument("--dataset", choices=["meld", "emotiontalk"], required=True)
     overfit_smoke.add_argument("--split", required=True)
     overfit_smoke.add_argument("--output", required=True)
-    overfit_smoke.add_argument(
-        "--modality", choices=["text", "audio", "vision"], action="append"
-    )
+    overfit_smoke.add_argument("--modality", choices=["text", "audio", "vision"], action="append")
     overfit_smoke.add_argument("--sample-count", type=int, default=16)
     overfit_smoke.add_argument("--max-epochs", type=int, default=200)
     overfit_smoke.add_argument("--learning-rate", type=float, default=1e-2)
@@ -157,9 +146,7 @@ def build_parser() -> argparse.ArgumentParser:
     extract.add_argument("--shard-size", type=int, default=1024)
     extract.add_argument("--audio-snr", type=float)
     extract.add_argument("--frame-drop", type=float, default=0.0)
-    extract.add_argument(
-        "--mode", choices=["serial", "parallel"], default="serial"
-    )
+    extract.add_argument("--mode", choices=["serial", "parallel"], default="serial")
     extract.add_argument("--text-audio-device", default="cuda:0")
     extract.add_argument("--vision-device", default="cuda:1")
     extract.add_argument("--text-batch-size", type=int, default=64)
@@ -169,9 +156,7 @@ def build_parser() -> argparse.ArgumentParser:
     extract.add_argument("--vision-workers", type=int, default=4)
     extract.add_argument("--queue-capacity", type=int, default=8)
     extract.add_argument("--staging")
-    extract.add_argument(
-        "--only-modality", choices=["text", "audio", "vision"]
-    )
+    extract.add_argument("--only-modality", choices=["text", "audio", "vision"])
     extract.add_argument("--condition-name")
     extract.add_argument("--start-shard", type=int)
     extract.add_argument("--end-shard", type=int)
@@ -183,8 +168,14 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument(
         "--model",
         choices=[
-            "majority", "text", "audio", "vision", "early_mlp",
-            "early_context", "lagf", "quality_lagf",
+            "majority",
+            "text",
+            "audio",
+            "vision",
+            "early_mlp",
+            "early_context",
+            "lagf",
+            "quality_lagf",
         ],
         default="lagf",
     )
@@ -264,9 +255,7 @@ def build_parser() -> argparse.ArgumentParser:
     attach_quality.add_argument("--base-features", required=True)
     attach_quality.add_argument("--output-features", required=True)
     attach_quality.add_argument("--yunet-model", required=True)
-    attach_quality.add_argument(
-        "--dataset", choices=["meld", "emotiontalk"], required=True
-    )
+    attach_quality.add_argument("--dataset", choices=["meld", "emotiontalk"], required=True)
     attach_quality.add_argument("--split", required=True)
     attach_quality.add_argument("--workers", type=int, default=4)
     attach_quality.add_argument("--queue-capacity", type=int, default=8)
@@ -491,21 +480,26 @@ def main(argv: list[str] | None = None) -> int:
                     dataset,
                     count_records(record for record in records if record.dataset == dataset),
                 )
-        print(json.dumps({
-            "is_valid": report.is_valid,
-            "split_counts": report.split_counts,
-            "label_counts": report.label_counts,
-            "duplicate_sample_ids": report.duplicate_sample_ids,
-            "cross_split_media": report.cross_split_media,
-        }, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {
+                    "is_valid": report.is_valid,
+                    "split_counts": report.split_counts,
+                    "label_counts": report.label_counts,
+                    "duplicate_sample_ids": report.duplicate_sample_ids,
+                    "cross_split_media": report.cross_split_media,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 0 if report.is_valid else 1
 
     if args.command == "verify-features":
         group = [
             record
             for record in read_manifest(args.manifest)
-            if record.dataset == args.dataset
-            and str(record.split) == args.split
+            if record.dataset == args.dataset and str(record.split) == args.split
         ]
         selected, resolved = slice_shard_range(
             group,
@@ -557,33 +551,24 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "extract-features":
         if bool(args.only_modality) != bool(args.base_features):
-            raise ValueError(
-                "only-modality and base-features must be supplied together"
-            )
+            raise ValueError("only-modality and base-features must be supplied together")
         if bool(args.condition_name) != bool(args.only_modality):
-            raise ValueError(
-                "condition-name is required for single-modality replacement"
-            )
+            raise ValueError("condition-name is required for single-modality replacement")
         if args.only_modality and args.mode != "parallel":
             raise ValueError("single-modality replacement requires parallel mode")
-        if args.base_features and Path(args.base_features).resolve() == Path(
-            args.features
-        ).resolve():
+        if (
+            args.base_features
+            and Path(args.base_features).resolve() == Path(args.features).resolve()
+        ):
             raise ValueError("base-features and features must be different roots")
-        range_requested = (
-            args.start_shard is not None or args.end_shard is not None
-        )
+        range_requested = args.start_shard is not None or args.end_shard is not None
         if range_requested:
             if args.start_shard is None or args.end_shard is None:
-                raise ValueError(
-                    "start-shard and end-shard must be supplied together"
-                )
+                raise ValueError("start-shard and end-shard must be supplied together")
             if args.mode != "parallel":
                 raise ValueError("shard ranges require parallel mode")
             if not args.dataset or not args.split:
-                raise ValueError(
-                    "shard ranges require explicit dataset and split"
-                )
+                raise ValueError("shard ranges require explicit dataset and split")
         records = [
             record
             for record in read_manifest(args.manifest)
@@ -600,9 +585,7 @@ def main(argv: list[str] | None = None) -> int:
             for device_name in requested_devices:
                 if device_name.startswith("cuda:"):
                     requested_cuda_indices.append(int(device_name.split(":", 1)[1]))
-            if requested_cuda_indices and torch.cuda.device_count() <= max(
-                requested_cuda_indices
-            ):
+            if requested_cuda_indices and torch.cuda.device_count() <= max(requested_cuda_indices):
                 raise RuntimeError(
                     "parallel extraction requested unavailable CUDA devices: "
                     f"{args.text_audio_device}, {args.vision_device}"
@@ -619,22 +602,15 @@ def main(argv: list[str] | None = None) -> int:
                 mp_context=spawn_context,
             )
             final_store = FeatureStore(args.features)
-            base_store = (
-                FeatureStore(args.base_features) if args.base_features else None
-            )
+            base_store = FeatureStore(args.base_features) if args.base_features else None
             for dataset in sorted({record.dataset for record in records}):
                 for split in sorted(
-                    {
-                        str(record.split)
-                        for record in records
-                        if record.dataset == dataset
-                    }
+                    {str(record.split) for record in records if record.dataset == dataset}
                 ):
                     group = [
                         record
                         for record in records
-                        if record.dataset == dataset
-                        and str(record.split) == split
+                        if record.dataset == dataset and str(record.split) == split
                     ]
                     if args.only_modality:
                         write_condition_provenance(
@@ -643,9 +619,7 @@ def main(argv: list[str] | None = None) -> int:
                                 "condition": args.condition_name,
                                 "recompute_modality": args.only_modality,
                                 "manifest": str(Path(args.manifest).resolve()),
-                                "base_features": str(
-                                    Path(args.base_features).resolve()
-                                ),
+                                "base_features": str(Path(args.base_features).resolve()),
                                 "dataset": dataset,
                                 "split": split,
                                 "audio_snr": args.audio_snr,
@@ -734,9 +708,12 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
         for dataset in sorted({record.dataset for record in records}):
-            for split in sorted({str(record.split) for record in records if record.dataset == dataset}):
+            for split in sorted(
+                {str(record.split) for record in records if record.dataset == dataset}
+            ):
                 group = [
-                    record for record in records
+                    record
+                    for record in records
                     if record.dataset == dataset and str(record.split) == split
                 ]
                 runner.run(group, FeatureStore(args.features), shard_size=args.shard_size)
@@ -809,8 +786,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         if not args.checkpoint or not args.yunet_model:
             raise SystemExit(
-                "analyze/serve requires --deployment or both "
-                "--checkpoint and --yunet-model"
+                "analyze/serve requires --deployment or both --checkpoint and --yunet-model"
             )
         analyzer = build_legacy_runtime(
             checkpoint_path=args.checkpoint,

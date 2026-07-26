@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import json
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Sequence
 
@@ -64,9 +64,7 @@ def verify_feature_range(
 
     expected_indices = {index for index, _, _ in expected}
     if start_shard == 0 and end_shard == resolved_total:
-        actual_indices = {
-            _shard_index(path) for path in store.paths(dataset, split)
-        }
+        actual_indices = {_shard_index(path) for path in store.paths(dataset, split)}
         extras = sorted(actual_indices - expected_indices)
         if extras:
             raise ValueError(f"unexpected feature shards: {extras}")

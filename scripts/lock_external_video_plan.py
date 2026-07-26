@@ -4,8 +4,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 from bimer.external_evaluation import (
     ExternalVideo,

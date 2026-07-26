@@ -46,9 +46,7 @@ def test_modality_store_round_trips_and_validates_expected_ids(tmp_path):
         available=np.array([True, True]),
     )
     path = store.write("emotiontalk", "validation", 0, shard)
-    loaded = store.read_verified(
-        "emotiontalk", "validation", 0, np.array(["a", "b"])
-    )
+    loaded = store.read_verified("emotiontalk", "validation", 0, np.array(["a", "b"]))
     assert path.is_file()
     assert loaded.sample_ids.tolist() == ["a", "b"]
     assert loaded.quality.shape == (2, 4)
@@ -162,9 +160,7 @@ def test_merge_replaced_modality_shard_preserves_unmodified_modalities(tmp_path)
             text=np.full((2, 768), 1, dtype=np.float32),
             audio=np.full((2, 1024), 2, dtype=np.float32),
             vision=np.full((2, 512), 3, dtype=np.float32),
-            modality_mask=np.array(
-                [[True, True, True], [True, True, False]], dtype=np.bool_
-            ),
+            modality_mask=np.array([[True, True, True], [True, True, False]], dtype=np.bool_),
         ),
     )
     ModalityStore(tmp_path / "replacement", "audio", 1024).write(
@@ -202,9 +198,7 @@ def test_merge_replaced_modality_shard_preserves_unmodified_modalities(tmp_path)
         [True, True, True],
         [True, False, False],
     ]
-    np.testing.assert_allclose(
-        merged.modality_quality[0, 1], [0.1, 0.2, 0.3, 0.4]
-    )
+    np.testing.assert_allclose(merged.modality_quality[0, 1], [0.1, 0.2, 0.3, 0.4])
     assert np.all(merged.modality_quality[1, 1] == 0)
 
 
@@ -219,9 +213,7 @@ def test_seed_staging_from_base_excludes_recomputed_modality(tmp_path):
             text=np.full((2, 768), 1, dtype=np.float32),
             audio=np.full((2, 1024), 2, dtype=np.float32),
             vision=np.full((2, 512), 3, dtype=np.float32),
-            modality_mask=np.array(
-                [[True, True, True], [True, False, False]], dtype=np.bool_
-            ),
+            modality_mask=np.array([[True, True, True], [True, False, False]], dtype=np.bool_),
         ),
     )
 
@@ -236,15 +228,13 @@ def test_seed_staging_from_base_excludes_recomputed_modality(tmp_path):
     )
 
     assert {path.parent.name for path in paths} == {"text", "audio"}
-    assert not ModalityStore(
-        tmp_path / "condition", "vision", 512
-    ).path("meld", "test", 0).exists()
-    text = ModalityStore(
-        tmp_path / "condition", "text", 768
-    ).read_verified("meld", "test", 0, np.array(["a", "b"]))
-    audio = ModalityStore(
-        tmp_path / "condition", "audio", 1024
-    ).read_verified("meld", "test", 0, np.array(["a", "b"]))
+    assert not ModalityStore(tmp_path / "condition", "vision", 512).path("meld", "test", 0).exists()
+    text = ModalityStore(tmp_path / "condition", "text", 768).read_verified(
+        "meld", "test", 0, np.array(["a", "b"])
+    )
+    audio = ModalityStore(tmp_path / "condition", "audio", 1024).read_verified(
+        "meld", "test", 0, np.array(["a", "b"])
+    )
     assert text.available.tolist() == [True, True]
     assert audio.available.tolist() == [True, False]
     assert np.all(text.features == 1)

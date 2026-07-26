@@ -7,7 +7,6 @@ import numpy as np
 
 from .feature_store import FeatureShard, FeatureStore, validate_feature_shard
 
-
 MODALITY_DIMS = {"text": 768, "audio": 1024, "vision": 512}
 STAGING_SCHEMA_VERSION = 2
 SUPPORTED_STAGING_SCHEMA_VERSIONS = {1, 2}
@@ -83,9 +82,7 @@ class ModalityStore:
         ):
             raise ValueError("staging shard has unexpected sample IDs")
         if shard.features.shape != (len(sample_ids), self.output_dim):
-            raise ValueError(
-                f"features must have shape [rows, {self.output_dim}]"
-            )
+            raise ValueError(f"features must have shape [rows, {self.output_dim}]")
         if shard.available.shape != (len(sample_ids),):
             raise ValueError("available must have shape [rows]")
         if np.asarray(shard.quality).shape != (len(sample_ids), 4):
@@ -108,9 +105,7 @@ class ModalityStore:
             with temporary.open("wb") as stream:
                 np.savez_compressed(
                     stream,
-                    schema_version=np.asarray(
-                        [STAGING_SCHEMA_VERSION], dtype=np.int16
-                    ),
+                    schema_version=np.asarray([STAGING_SCHEMA_VERSION], dtype=np.int16),
                     modality=np.asarray([self.modality]),
                     output_dim=np.asarray([self.output_dim], dtype=np.int32),
                     sample_ids=np.asarray(shard.sample_ids).astype(str),
@@ -131,13 +126,9 @@ class ModalityStore:
             if version not in SUPPORTED_STAGING_SCHEMA_VERSIONS:
                 raise ValueError(f"unsupported staging schema version: {version}")
             if modality != self.modality:
-                raise ValueError(
-                    f"staging modality is {modality}, expected {self.modality}"
-                )
+                raise ValueError(f"staging modality is {modality}, expected {self.modality}")
             if output_dim != self.output_dim:
-                raise ValueError(
-                    f"staging output_dim is {output_dim}, expected {self.output_dim}"
-                )
+                raise ValueError(f"staging output_dim is {output_dim}, expected {self.output_dim}")
             shard = ModalityShard(
                 sample_ids=payload["sample_ids"],
                 features=payload["features"],
@@ -214,10 +205,7 @@ def merge_staged_shard(
         values[~np.asarray(shard.available, dtype=np.bool_)] = 0.0
         features[modality] = values
     modality_mask = np.stack(
-        [
-            np.asarray(staged[modality].available, dtype=np.bool_)
-            for modality in MODALITY_DIMS
-        ],
+        [np.asarray(staged[modality].available, dtype=np.bool_) for modality in MODALITY_DIMS],
         axis=1,
     )
     modality_quality = np.stack(
@@ -270,8 +258,7 @@ def merge_replaced_modality_shard(
     )
     if base_path is None:
         raise FileNotFoundError(
-            f"base feature shard is missing: "
-            f"{base_store.path(dataset, split, shard_index)}"
+            f"base feature shard is missing: {base_store.path(dataset, split, shard_index)}"
         )
     base = base_store.read(base_path)
     replacement = ModalityStore(
@@ -281,12 +268,9 @@ def merge_replaced_modality_shard(
     ).read_verified(dataset, split, shard_index, expected_ids)
 
     features = {
-        name: np.asarray(getattr(base, name), dtype=np.float32).copy()
-        for name in MODALITY_DIMS
+        name: np.asarray(getattr(base, name), dtype=np.float32).copy() for name in MODALITY_DIMS
     }
-    replacement_values = np.asarray(
-        replacement.features, dtype=np.float32
-    ).copy()
+    replacement_values = np.asarray(replacement.features, dtype=np.float32).copy()
     available = np.asarray(replacement.available, dtype=np.bool_)
     replacement_values[~available] = 0.0
     features[modality] = replacement_values
@@ -294,9 +278,7 @@ def merge_replaced_modality_shard(
     modality_index = tuple(MODALITY_DIMS).index(modality)
     modality_mask[:, modality_index] = available
     modality_quality = np.asarray(base.modality_quality, dtype=np.float32).copy()
-    modality_quality[:, modality_index] = np.asarray(
-        replacement.quality, dtype=np.float32
-    )
+    modality_quality[:, modality_index] = np.asarray(replacement.quality, dtype=np.float32)
     modality_quality[~modality_mask] = 0.0
 
     merged = FeatureShard(
@@ -333,20 +315,15 @@ def seed_staging_from_base_shard(
     )
     if base_path is None:
         raise FileNotFoundError(
-            f"base feature shard is missing: "
-            f"{base_store.path(dataset, split, shard_index)}"
+            f"base feature shard is missing: {base_store.path(dataset, split, shard_index)}"
         )
     base = base_store.read(base_path)
     written: list[Path] = []
     for mask_index, (modality, width) in enumerate(MODALITY_DIMS.items()):
         if modality == recompute_modality:
             continue
-        available = np.asarray(
-            base.modality_mask[:, mask_index], dtype=np.bool_
-        )
-        values = np.asarray(
-            getattr(base, modality), dtype=np.float32
-        ).copy()
+        available = np.asarray(base.modality_mask[:, mask_index], dtype=np.bool_)
+        values = np.asarray(getattr(base, modality), dtype=np.float32).copy()
         values[~available] = 0.0
         expected = ModalityShard(
             expected_ids,
@@ -357,17 +334,13 @@ def seed_staging_from_base_shard(
         store = ModalityStore(staging_root, modality, width)
         path = store.path(dataset, split, shard_index)
         if path.is_file():
-            existing = store.read_verified(
-                dataset, split, shard_index, expected_ids
-            )
+            existing = store.read_verified(dataset, split, shard_index, expected_ids)
             if (
                 not np.array_equal(existing.available, expected.available)
                 or not np.array_equal(existing.features, expected.features)
                 or not np.array_equal(existing.quality, expected.quality)
             ):
-                raise ValueError(
-                    f"existing staging shard {path} does not match base features"
-                )
+                raise ValueError(f"existing staging shard {path} does not match base features")
             written.append(path)
             continue
         written.append(store.write(dataset, split, shard_index, expected))

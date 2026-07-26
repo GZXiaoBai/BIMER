@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import json
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Sequence
 
 import numpy as np
 import torch
@@ -91,7 +91,7 @@ def fit_temperature(probabilities: np.ndarray, truth: np.ndarray) -> float:
         line_search_fn="strong_wolfe",
     )
 
-    def closure():
+    def closure() -> torch.Tensor:
         optimizer.zero_grad()
         temperature = log_temperature.exp().clamp(0.05, 10.0)
         loss = F.cross_entropy(logits / temperature, targets)
@@ -126,9 +126,7 @@ def select_uncertainty_threshold(
     if best_accuracy < overall_accuracy + 0.03:
         return 0.50
     return min(
-        threshold
-        for threshold, accuracy in candidates
-        if abs(accuracy - best_accuracy) <= 1e-12
+        threshold for threshold, accuracy in candidates if abs(accuracy - best_accuracy) <= 1e-12
     )
 
 
@@ -197,23 +195,12 @@ def fit_calibration_profile(
             bins=bins,
         )
         relative_ece_reduction = (
-            (before["ece"] - candidate_after["ece"]) / before["ece"]
-            if before["ece"] > 0
-            else 0.0
+            (before["ece"] - candidate_after["ece"]) / before["ece"] if before["ece"] > 0 else 0.0
         )
-        enabled = (
-            relative_ece_reduction >= 0.10
-            and candidate_after["nll"] <= before["nll"] + 1e-9
-        )
+        enabled = relative_ece_reduction >= 0.10 and candidate_after["nll"] <= before["nll"] + 1e-9
         temperature = candidate_temperature if enabled else 1.0
-        calibrated = (
-            candidate_probabilities if enabled else values[active]
-        )
-        after = (
-            candidate_after
-            if enabled
-            else dict(before)
-        )
+        calibrated = candidate_probabilities if enabled else values[active]
+        after = candidate_after if enabled else dict(before)
         results[language] = LanguageCalibration(
             temperature=float(temperature),
             threshold=select_uncertainty_threshold(calibrated, labels[active]),

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
-import re
 from typing import Any, Literal
 
 from .labels import EMOTION_LABELS, EmotionLabel, normalize_emotion
@@ -140,10 +140,7 @@ class AnalysisResult:
         if not self.segments:
             return {label: 0.0 for label in EMOTION_LABELS}
         return {
-            label: sum(
-                float(segment.probabilities.get(label, 0.0))
-                for segment in self.segments
-            )
+            label: sum(float(segment.probabilities.get(label, 0.0)) for segment in self.segments)
             / len(self.segments)
             for label in EMOTION_LABELS
         }
@@ -178,9 +175,7 @@ class AnalysisResult:
                     "time_seconds": current.start_seconds,
                     "from_emotion": str(previous.emotion),
                     "to_emotion": str(current.emotion),
-                    "confidence": float(
-                        current.probabilities.get(str(current.emotion), 0.0)
-                    ),
+                    "confidence": float(current.probabilities.get(str(current.emotion), 0.0)),
                 }
             )
         return tuple(events)

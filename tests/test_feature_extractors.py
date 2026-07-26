@@ -72,9 +72,7 @@ def test_audio_extractor_pads_sub_receptive_field_waveforms():
     class RecordingModel:
         def __call__(self, **model_inputs):
             rows = model_inputs["input_values"].shape[0]
-            return SimpleNamespace(
-                last_hidden_state=torch.ones((rows, 1, 1024))
-            )
+            return SimpleNamespace(last_hidden_state=torch.ones((rows, 1, 1024)))
 
     extractor = AudioFeatureExtractor.__new__(AudioFeatureExtractor)
     extractor.device = torch.device("cpu")
@@ -226,13 +224,21 @@ def test_segment_video_reader_uses_timestamp_bounded_positions(monkeypatch):
             self.position = 0
             self.requested_positions = []
 
-        def isOpened(self): return True
-        def get(self, prop): return 100 if prop == 7 else 10
+        def isOpened(self):
+            return True
+
+        def get(self, prop):
+            return 100 if prop == 7 else 10
+
         def set(self, _prop, value):
             self.position = int(value)
             self.requested_positions.append(self.position)
-        def read(self): return True, frames[self.position]
-        def release(self): pass
+
+        def read(self):
+            return True, frames[self.position]
+
+        def release(self):
+            pass
 
     capture = FakeCapture()
     fake_cv2 = SimpleNamespace(
@@ -263,10 +269,7 @@ def test_vision_extractor_batches_clips_in_order():
                 dtype=np.float32,
             )
 
-    clips = [
-        np.full((16, 112, 112, 3), value, dtype=np.uint8)
-        for value in range(5)
-    ]
+    clips = [np.full((16, 112, 112, 3), value, dtype=np.uint8) for value in range(5)]
     extractor = RecordingVision()
     result = extractor.encode_clips(clips, batch_size=2)
 

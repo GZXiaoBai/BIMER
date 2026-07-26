@@ -7,8 +7,14 @@ from bimer.normalization import NormalizedModel
 @pytest.mark.parametrize(
     "name",
     [
-        "majority", "text", "audio", "vision", "early_mlp", "early_context",
-        "lagf", "quality_lagf",
+        "majority",
+        "text",
+        "audio",
+        "vision",
+        "early_mlp",
+        "early_context",
+        "lagf",
+        "quality_lagf",
     ],
 )
 def test_model_factory_builds_every_required_experiment(name):

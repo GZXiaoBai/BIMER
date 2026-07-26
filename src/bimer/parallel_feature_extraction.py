@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from collections import deque
-from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
-from dataclasses import dataclass
 import gc
-from itertools import islice
 import json
-from pathlib import Path
 import threading
 import time
 import warnings
+from collections import deque
+from concurrent.futures import Executor, ProcessPoolExecutor, ThreadPoolExecutor
+from dataclasses import dataclass
+from itertools import islice
+from pathlib import Path
 from typing import Callable, Iterable, Iterator, Sequence, TypeVar
 
 import numpy as np
@@ -26,7 +26,6 @@ from .modality_store import (
 from .quality import audio_quality, text_quality
 from .schema import UtteranceRecord
 
-
 InputT = TypeVar("InputT")
 OutputT = TypeVar("OutputT")
 _ERROR_LOCK = threading.Lock()
@@ -40,8 +39,7 @@ class CpuWorkerError(RuntimeError):
 
 def _is_cuda_oom(error: BaseException) -> bool:
     return isinstance(error, torch.cuda.OutOfMemoryError) or (
-        isinstance(error, RuntimeError)
-        and "out of memory" in str(error).lower()
+        isinstance(error, RuntimeError) and "out of memory" in str(error).lower()
     )
 
 
@@ -94,9 +92,7 @@ def prefetched_map(
                 replacement = next(source, None)
                 if replacement is not None:
                     next_index, next_value = replacement
-                    pending.append(
-                        (next_index, executor.submit(function, next_value))
-                    )
+                    pending.append((next_index, executor.submit(function, next_value)))
         finally:
             for _, future in pending:
                 future.cancel()
@@ -114,9 +110,7 @@ def record_shards(
     for local_index, start in enumerate(range(0, len(records), shard_size)):
         shard_index = shard_index_offset + local_index
         chunk = records[start : start + shard_size]
-        sample_ids = np.asarray(
-            [record.sample_id for record in chunk], dtype=str
-        )
+        sample_ids = np.asarray([record.sample_id for record in chunk], dtype=str)
         yield shard_index, chunk, sample_ids
 
 
@@ -144,9 +138,7 @@ def _pending_shards(
         return []
     dataset, split = group
     pending = []
-    for shard_index, chunk, sample_ids in record_shards(
-        records, shard_size, shard_index_offset
-    ):
+    for shard_index, chunk, sample_ids in record_shards(records, shard_size, shard_index_offset):
         if shard_index in completed_shards:
             continue
         path = store.path(dataset, split, shard_index)
@@ -165,9 +157,7 @@ def validate_stage_output(
 ) -> np.ndarray:
     output = np.asarray(features, dtype=np.float32)
     if output.shape != (rows, width):
-        raise ValueError(
-            f"{modality} returned {output.shape}, expected {(rows, width)}"
-        )
+        raise ValueError(f"{modality} returned {output.shape}, expected {(rows, width)}")
     if not np.isfinite(output).all():
         raise ValueError(f"{modality} returned non-finite features")
     return output
@@ -241,9 +231,7 @@ def extract_text_stage(
             [record.text for record in chunk],
             initial_batch_size=batch_size,
         )
-        features = validate_stage_output(
-            "text", features, len(chunk), store.output_dim
-        )
+        features = validate_stage_output("text", features, len(chunk), store.output_dim)
         written.append(
             store.write(
                 chunk[0].dataset,
@@ -340,9 +328,7 @@ def extract_audio_stage(
                 safe_waveforms,
                 initial_batch_size=batch_size,
             )
-            features = validate_stage_output(
-                "audio", features, len(chunk), store.output_dim
-            )
+            features = validate_stage_output("audio", features, len(chunk), store.output_dim)
             features[~available] = 0.0
             written.append(
                 store.write(
@@ -436,9 +422,7 @@ def extract_vision_stage(
         for shard_index, chunk, sample_ids in pending:
             prepared = [next(prepared_iterator) for _ in chunk]
             consumed += len(chunk)
-            available = np.asarray(
-                [item[1] for item in prepared], dtype=np.bool_
-            )
+            available = np.asarray([item[1] for item in prepared], dtype=np.bool_)
             quality = np.stack(
                 [
                     np.asarray(item[2], dtype=np.float32)
@@ -448,9 +432,7 @@ def extract_vision_stage(
                 ]
             )
             quality[~available] = 0.0
-            features = np.zeros(
-                (len(chunk), store.output_dim), dtype=np.float32
-            )
+            features = np.zeros((len(chunk), store.output_dim), dtype=np.float32)
             positions = np.flatnonzero(available)
             if positions.size:
                 clips = [prepared[int(index)][0] for index in positions]
@@ -459,9 +441,7 @@ def extract_vision_stage(
                     clips,
                     initial_batch_size=batch_size,
                 )
-                encoded = validate_stage_output(
-                    "vision", encoded, len(clips), store.output_dim
-                )
+                encoded = validate_stage_output("vision", encoded, len(clips), store.output_dim)
                 features[positions] = encoded
             written.append(
                 store.write(
@@ -634,13 +614,16 @@ class ParallelFeatureExtractionRunner:
             self.config.shard_size,
             self.config.shard_index_offset,
         ):
-            if verified_final_shard(
-                final_store,
-                dataset,
-                split,
-                shard_index,
-                sample_ids,
-            ) is not None:
+            if (
+                verified_final_shard(
+                    final_store,
+                    dataset,
+                    split,
+                    shard_index,
+                    sample_ids,
+                )
+                is not None
+            ):
                 completed.add(shard_index)
         return completed
 
@@ -692,18 +675,12 @@ class ParallelFeatureExtractionRunner:
             # from separate threads can deadlock before either branch reports
             # progress on Kaggle's dual-T4 runtime.
             self._run_text(records, completed_shards)
-            audio_extractor = self._prepare_audio_extractor(
-                records, completed_shards
-            )
+            audio_extractor = self._prepare_audio_extractor(records, completed_shards)
             with ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix="bimer-vision-gpu"
             ) as executor:
-                gpu1 = executor.submit(
-                    self._run_vision, records, completed_shards
-                )
-                self._run_audio(
-                    records, completed_shards, audio_extractor
-                )
+                gpu1 = executor.submit(self._run_vision, records, completed_shards)
+                self._run_audio(records, completed_shards, audio_extractor)
                 gpu1.result()
         return self._merge_all(records, final_store)
 

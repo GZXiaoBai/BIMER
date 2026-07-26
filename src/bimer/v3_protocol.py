@@ -36,15 +36,10 @@ def select_classification_loss(
         macro_gain = _average(report, "macro_f1") - baseline_macro
         weighted_delta = _average(report, "weighted_f1") - baseline_weighted
         worst_dataset_delta = min(
-            float(report[dataset]["weighted_f1"])
-            - float(baseline[dataset]["weighted_f1"])
+            float(report[dataset]["weighted_f1"]) - float(baseline[dataset]["weighted_f1"])
             for dataset in DATASETS
         )
-        accepted = (
-            macro_gain >= 0.005
-            and weighted_delta >= -0.005
-            and worst_dataset_delta >= -0.01
-        )
+        accepted = macro_gain >= 0.005 and weighted_delta >= -0.005 and worst_dataset_delta >= -0.01
         diagnostics[name] = {
             "macro_f1_gain": macro_gain,
             "weighted_f1_delta": weighted_delta,
@@ -125,9 +120,7 @@ def select_gate_ranking_weight(
         if accepted:
             passed.append(weight)
     selected = (
-        max(passed, key=lambda weight: (robustness_scores[weight], -weight))
-        if passed
-        else 0.0
+        max(passed, key=lambda weight: (robustness_scores[weight], -weight)) if passed else 0.0
     )
     return SelectionDecision(selected, tuple(passed), diagnostics)
 

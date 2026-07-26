@@ -14,23 +14,17 @@ def main() -> int:
     args = parser.parse_args()
     candidates = []
     for seed in (42, 123, 2026):
-        result = (
-            args.formal_root
-            / "quality_lagf"
-            / "joint"
-            / f"seed-{seed}"
-            / "results.json"
-        )
+        result = args.formal_root / "quality_lagf" / "joint" / f"seed-{seed}" / "results.json"
         payload = json.loads(result.read_text(encoding="utf-8"))
         if payload.get("test") or payload.get("evaluation_datasets"):
             raise SystemExit("system checkpoint selection must not use test output")
         if payload["config"].get("protocol_stage") != "v3_formal":
             raise SystemExit("candidate is not a frozen V3 formal run")
         validation = payload["validation"]
-        score = sum(
-            float(validation[dataset]["weighted_f1"])
-            for dataset in ("meld", "emotiontalk")
-        ) / 2
+        score = (
+            sum(float(validation[dataset]["weighted_f1"]) for dataset in ("meld", "emotiontalk"))
+            / 2
+        )
         checkpoint = result.parent / "best.pt"
         candidates.append((score, -seed, seed, checkpoint))
     score, _, seed, checkpoint = max(candidates)

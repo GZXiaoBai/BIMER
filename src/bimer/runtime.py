@@ -64,28 +64,14 @@ def build_runtime(
         checkpoint_path=root / manifest.checkpoint.path,
         yunet_path=root / manifest.yunet.path,
         device_name=device_name,
-        text_model=str(
-            root / text_reference.local_path
-            if offline
-            else text_reference.identifier
-        ),
+        text_model=str(root / text_reference.local_path if offline else text_reference.identifier),
         audio_model=str(
-            root / audio_reference.local_path
-            if offline
-            else audio_reference.identifier
+            root / audio_reference.local_path if offline else audio_reference.identifier
         ),
-        whisper_model=str(
-            root / asr_reference.local_path
-            if offline
-            else asr_reference.identifier
-        ),
-        vision_weights_path=(
-            root / vision_reference.local_path if offline else None
-        ),
+        whisper_model=str(root / asr_reference.local_path if offline else asr_reference.identifier),
+        vision_weights_path=(root / vision_reference.local_path if offline else None),
         calibration_path=(
-            root / manifest.calibration.path
-            if manifest.calibration is not None
-            else None
+            root / manifest.calibration.path if manifest.calibration is not None else None
         ),
         cache_directory=root / manifest.runtime.cache_directory,
         model_version=manifest.model_version,
@@ -117,9 +103,7 @@ def build_legacy_runtime(
         audio_model=audio_model,
         whisper_model=whisper_model,
         vision_weights_path=None,
-        calibration_path=(
-            Path(calibration_path) if calibration_path is not None else None
-        ),
+        calibration_path=(Path(calibration_path) if calibration_path is not None else None),
         cache_directory=Path(cache_directory),
         model_version=model_version,
         encoder_versions={
@@ -209,9 +193,7 @@ def _assemble_runtime(
         )
 
     calibration_profile = (
-        CalibrationProfile.load(calibration_path)
-        if calibration_path is not None
-        else None
+        CalibrationProfile.load(calibration_path) if calibration_path is not None else None
     )
     return DialogueAnalyzer(
         transcriber=FasterWhisperTranscriber(

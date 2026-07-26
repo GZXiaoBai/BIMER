@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import Executor, ProcessPoolExecutor
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Sequence
 
 import numpy as np
 
@@ -62,12 +62,8 @@ class QualityAttachmentRunner:
             output_path = output_store.path(dataset, split, shard_index)
             if output_path.is_file():
                 existing = output_store.read(output_path)
-                if not np.array_equal(
-                    existing.sample_ids.astype(str), base.sample_ids.astype(str)
-                ):
-                    raise ValueError(
-                        f"existing quality shard {output_path} has unexpected IDs"
-                    )
+                if not np.array_equal(existing.sample_ids.astype(str), base.sample_ids.astype(str)):
+                    raise ValueError(f"existing quality shard {output_path} has unexpected IDs")
                 written.append(output_path)
                 continue
             missing = [
@@ -76,9 +72,7 @@ class QualityAttachmentRunner:
                 if sample_id not in record_by_id
             ]
             if missing:
-                raise ValueError(
-                    f"manifest is missing {len(missing)} base samples: {missing[0]}"
-                )
+                raise ValueError(f"manifest is missing {len(missing)} base samples: {missing[0]}")
             selected.append((shard_index, base))
 
         flattened_records = [
@@ -87,9 +81,7 @@ class QualityAttachmentRunner:
             for sample_id in shard.sample_ids.astype(str)
         ]
         media_paths = [
-            Path(record.video_path)
-            if record.video_path is not None
-            else Path("__missing_media__")
+            Path(record.video_path) if record.video_path is not None else Path("__missing_media__")
             for record in flattened_records
         ]
         audio_rows = list(
