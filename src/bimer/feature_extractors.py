@@ -364,11 +364,26 @@ def _prepare_clip_tensor(clips: Sequence[np.ndarray]) -> Tensor:
 class VisionFeatureExtractor:
     output_dim = 512
 
-    def __init__(self, *, device: str = "cpu") -> None:
+    def __init__(
+        self,
+        *,
+        device: str = "cpu",
+        weights_path: Path | str | None = None,
+    ) -> None:
         from torchvision.models.video import R3D_18_Weights, r3d_18
 
         self.device = torch.device(device)
-        self.model = r3d_18(weights=R3D_18_Weights.DEFAULT)
+        if weights_path is None:
+            self.model = r3d_18(weights=R3D_18_Weights.DEFAULT)
+        else:
+            self.model = r3d_18(weights=None)
+            self.model.load_state_dict(
+                torch.load(
+                    weights_path,
+                    map_location="cpu",
+                    weights_only=True,
+                )
+            )
         self.model.fc = nn.Identity()
         self.model = self.model.to(self.device).eval()
         self.model.requires_grad_(False)

@@ -7,7 +7,6 @@ from functools import partial
 import json
 import multiprocessing
 from pathlib import Path
-import warnings
 import time
 
 import torch
@@ -39,12 +38,9 @@ from .modality_store import seed_staging_from_base_shard
 from .feature_statistics import compute_feature_statistics, write_feature_statistics
 from .feature_verification import verify_feature_range, write_range_completion
 from .inference import (
-    DialogueAnalyzer,
     FasterWhisperTranscriber,
-    PretrainedFeaturePipeline,
 )
 from .manifest import read_manifest, write_manifest
-from .model_factory import build_model
 from .overfit_smoke import run_unimodal_overfit_smoke, write_overfit_smoke
 from .quality_attachment import QualityAttachmentRunner
 from .parallel_feature_extraction import (
@@ -61,8 +57,9 @@ from .parallel_feature_extraction import (
 from .robustness import add_noise_at_snr, write_condition_provenance
 from .shard_ranges import slice_shard_range
 from .validation import validate_dataset_records
-from .runtime_cache import RuntimeFeatureCache
-from .calibration import CalibrationProfile
+from .deployment import DeploymentManifest, verify_deployment
+from .integrity import verify_sha256_manifest
+from .runtime import build_legacy_runtime, build_runtime
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -296,8 +293,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     analyze = commands.add_parser("analyze")
     analyze.add_argument("--video", required=True)
-    analyze.add_argument("--checkpoint", required=True)
-    analyze.add_argument("--yunet-model", required=True)
+    analyze.add_argument("--deployment")
+    analyze.add_argument("--artifact-root", default=".")
+    analyze.add_argument("--online", action="store_true")
+    analyze.add_argument("--checkpoint")
+    analyze.add_argument("--yunet-model")
     analyze.add_argument("--language", choices=["auto", "zh", "en"], default="auto")
     analyze.add_argument("--output", default="artifacts/exports")
     analyze.add_argument("--device", default="auto")
@@ -309,8 +309,11 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--model-version", default="auto")
 
     serve = commands.add_parser("serve")
-    serve.add_argument("--checkpoint", required=True)
-    serve.add_argument("--yunet-model", required=True)
+    serve.add_argument("--deployment")
+    serve.add_argument("--artifact-root", default=".")
+    serve.add_argument("--online", action="store_true")
+    serve.add_argument("--checkpoint")
+    serve.add_argument("--yunet-model")
     serve.add_argument("--device", default="auto")
     serve.add_argument("--text-model", default="xlm-roberta-base")
     serve.add_argument("--audio-model", default="facebook/wav2vec2-xls-r-300m")
@@ -319,94 +322,48 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--cache-dir", default="artifacts/runtime-cache")
     serve.add_argument("--model-version", default="auto")
     serve.add_argument("--share", action="store_true")
+
+    doctor = commands.add_parser("doctor")
+    doctor.add_argument("--deployment", required=True)
+    doctor.add_argument("--artifact-root", default=".")
+    doctor.add_argument("--offline", action="store_true")
+
+    verify_evidence = commands.add_parser("verify-evidence")
+    verify_evidence.add_argument("--manifest", required=True)
+    verify_evidence.add_argument("--root", default=".")
     return parser
-
-
-def _runtime_devices(device: torch.device) -> tuple[str, str]:
-    if device.type == "cuda":
-        return "cuda", "cuda"
-    if device.type == "mps":
-        return "mps", "cpu"
-    return "cpu", "cpu"
-
-
-def _runtime_analyzer(
-    checkpoint_path: str,
-    yunet_model: str,
-    device_name: str,
-    text_model: str = "xlm-roberta-base",
-    audio_model: str = "facebook/wav2vec2-xls-r-300m",
-    whisper_model: str = "small",
-    calibration_path: str | None = None,
-    cache_directory: str = "artifacts/runtime-cache",
-    model_version: str = "auto",
-) -> DialogueAnalyzer:
-    device = resolve_device(device_name)
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    model_config = checkpoint.get("metadata", {}).get("model_config")
-    if not model_config:
-        raise ValueError("checkpoint does not contain model_config metadata")
-    model = build_model(**model_config)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    extractor_device, whisper_device = _runtime_devices(device)
-    face_cropper = YuNetFaceCropper(yunet_model)
-    cache = RuntimeFeatureCache(cache_directory)
-    encoder_versions = {
-        "text": text_model,
-        "audio": audio_model,
-        "vision": "r3d18-yunet-v2",
-    }
-    if model_version == "auto":
-        experiment = checkpoint.get("metadata", {}).get("experiment", {})
-        if experiment.get("protocol_stage") == "v3_formal":
-            model_version = (
-                "v3_ranked"
-                if float(experiment.get("gate_ranking_weight", 0.0)) > 0
-                else "v3_loss_only"
-            )
-        else:
-            model_version = "v2_quality_lagf"
-    try:
-        pipeline = PretrainedFeaturePipeline(
-            text_extractor=TextFeatureExtractor(text_model, device=extractor_device),
-            audio_extractor=AudioFeatureExtractor(audio_model, device=extractor_device),
-            vision_extractor=VisionFeatureExtractor(device=extractor_device),
-            face_cropper=face_cropper,
-            cache=cache,
-            encoder_versions=encoder_versions,
-        )
-    except (RuntimeError, NotImplementedError) as exc:
-        if extractor_device != "mps":
-            raise
-        warnings.warn(
-            f"MPS feature extraction unavailable; falling back to CPU: {exc}",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        pipeline = PretrainedFeaturePipeline(
-            text_extractor=TextFeatureExtractor(text_model, device="cpu"),
-            audio_extractor=AudioFeatureExtractor(audio_model, device="cpu"),
-            vision_extractor=VisionFeatureExtractor(device="cpu"),
-            face_cropper=face_cropper,
-            cache=cache,
-            encoder_versions=encoder_versions,
-        )
-    return DialogueAnalyzer(
-        transcriber=FasterWhisperTranscriber(whisper_model, device=whisper_device),
-        feature_pipeline=pipeline,
-        model=model,
-        device=device,
-        calibration_profile=(
-            CalibrationProfile.load(calibration_path)
-            if calibration_path
-            else None
-        ),
-        model_version=model_version,
-    )
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.command == "doctor":
+        manifest = DeploymentManifest.load(args.deployment)
+        report = verify_deployment(
+            manifest,
+            artifact_root=Path(args.artifact_root),
+            offline=args.offline,
+        )
+        print(json.dumps(report.to_dict(), ensure_ascii=False, indent=2))
+        return 0 if report.ok else 1
+
+    if args.command == "verify-evidence":
+        result = verify_sha256_manifest(
+            manifest=Path(args.manifest),
+            root=Path(args.root),
+        )
+        print(
+            json.dumps(
+                {
+                    "ok": result.ok,
+                    "missing": list(result.missing),
+                    "mismatched": list(result.mismatched),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 0 if result.ok else 1
 
     if args.command == "sample-corruption-manifest":
         training_records = [
@@ -842,17 +799,30 @@ def main(argv: list[str] | None = None) -> int:
         print(result)
         return 0
 
-    analyzer = _runtime_analyzer(
-        args.checkpoint,
-        args.yunet_model,
-        args.device,
-        args.text_model,
-        args.audio_model,
-        args.whisper_model,
-        args.calibration,
-        args.cache_dir,
-        args.model_version,
-    )
+    if args.deployment:
+        analyzer = build_runtime(
+            args.deployment,
+            artifact_root=args.artifact_root,
+            device_name=args.device,
+            offline=not args.online,
+        )
+    else:
+        if not args.checkpoint or not args.yunet_model:
+            raise SystemExit(
+                "analyze/serve requires --deployment or both "
+                "--checkpoint and --yunet-model"
+            )
+        analyzer = build_legacy_runtime(
+            checkpoint_path=args.checkpoint,
+            yunet_path=args.yunet_model,
+            device_name=args.device,
+            text_model=args.text_model,
+            audio_model=args.audio_model,
+            whisper_model=args.whisper_model,
+            calibration_path=args.calibration,
+            cache_directory=args.cache_dir,
+            model_version=args.model_version,
+        )
     if args.command == "analyze":
         result = analyzer.analyze(Path(args.video), args.language)
         output = Path(args.output)

@@ -1,4 +1,5 @@
 import sys
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import numpy as np
@@ -128,6 +129,52 @@ def test_audio_extractor_uses_feature_extractor_without_tokenizer(monkeypatch):
     extractor = AudioFeatureExtractor()
 
     assert extractor.processor is feature_extractor
+
+
+def test_vision_extractor_loads_explicit_offline_weights(tmp_path, monkeypatch):
+    recorded = {}
+
+    class FakeModel:
+        def __init__(self):
+            self.fc = object()
+
+        def load_state_dict(self, state):
+            recorded["state"] = state
+
+        def to(self, device):
+            recorded["device"] = str(device)
+            return self
+
+        def eval(self):
+            return self
+
+        def requires_grad_(self, value):
+            recorded["requires_grad"] = value
+            return self
+
+    def fake_r3d_18(*, weights):
+        recorded["weights"] = weights
+        return FakeModel()
+
+    fake_video = ModuleType("torchvision.models.video")
+    fake_video.R3D_18_Weights = SimpleNamespace(DEFAULT=object())
+    fake_video.r3d_18 = fake_r3d_18
+    monkeypatch.setitem(sys.modules, "torchvision.models.video", fake_video)
+    monkeypatch.setattr(
+        torch,
+        "load",
+        lambda path, **_kwargs: {
+            "offline": Path(path).name,
+        },
+    )
+    weights = tmp_path / "r3d.pt"
+    weights.write_bytes(b"weights")
+
+    VisionFeatureExtractor(device="cpu", weights_path=weights)
+
+    assert recorded["weights"] is None
+    assert recorded["state"] == {"offline": "r3d.pt"}
+    assert recorded["requires_grad"] is False
 
 
 def test_video_reader_uses_one_capture_and_uniform_frame_positions(monkeypatch):

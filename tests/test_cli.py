@@ -5,8 +5,11 @@ from pathlib import Path
 import bimer.cli as cli
 import numpy as np
 import pytest
-from bimer.cli import _runtime_devices, build_parser
+from bimer.cli import build_parser
 from bimer.feature_store import FeatureShard, FeatureStore
+from bimer.integrity import write_sha256_manifest
+from bimer.labels import EMOTION_LABELS
+from bimer.runtime import runtime_devices
 from bimer.schema import UtteranceRecord
 
 
@@ -46,6 +49,8 @@ def test_cli_exposes_all_reproducible_workflow_commands():
         "evaluate",
         "analyze",
         "serve",
+        "doctor",
+        "verify-evidence",
     }
     subparsers = next(
         action
@@ -381,9 +386,9 @@ def test_attach_quality_parser_supports_resumable_shard_ranges():
 
 def test_runtime_devices_keep_whisper_on_cpu_and_torch_extractors_on_mps():
     torch = __import__("torch")
-    assert _runtime_devices(torch.device("mps")) == ("mps", "cpu")
-    assert _runtime_devices(torch.device("cuda")) == ("cuda", "cuda")
-    assert _runtime_devices(torch.device("cpu")) == ("cpu", "cpu")
+    assert runtime_devices(torch.device("mps")) == ("mps", "cpu")
+    assert runtime_devices(torch.device("cuda")) == ("cuda", "cuda")
+    assert runtime_devices(torch.device("cpu")) == ("cpu", "cpu")
 
 
 def test_analyze_accepts_offline_model_directories():
@@ -408,6 +413,108 @@ def test_analyze_accepts_offline_model_directories():
     assert args.text_model == "models/xlmr"
     assert args.audio_model == "models/xlsr"
     assert args.whisper_model == "models/whisper-small"
+
+
+def test_analyze_and_serve_accept_a_single_deployment_manifest():
+    analyze = build_parser().parse_args(
+        [
+            "analyze",
+            "--video",
+            "demo.mp4",
+            "--deployment",
+            "configs/deployment-v2.json",
+        ]
+    )
+    serve = build_parser().parse_args(
+        [
+            "serve",
+            "--deployment",
+            "configs/deployment-v2.json",
+        ]
+    )
+    doctor = build_parser().parse_args(
+        [
+            "doctor",
+            "--deployment",
+            "configs/deployment-v2.json",
+            "--offline",
+        ]
+    )
+
+    assert analyze.deployment == "configs/deployment-v2.json"
+    assert analyze.checkpoint is None
+    assert serve.deployment == "configs/deployment-v2.json"
+    assert doctor.offline is True
+
+
+def test_verify_evidence_command_returns_nonzero_after_artifact_changes(
+    tmp_path, capsys
+):
+    artifact = tmp_path / "result.json"
+    artifact.write_text('{"ok": true}\n', encoding="utf-8")
+    manifest = tmp_path / "evidence.sha256"
+    write_sha256_manifest(
+        destination=manifest,
+        root=tmp_path,
+        inputs=[artifact],
+    )
+
+    assert cli.main(
+        ["verify-evidence", "--manifest", str(manifest), "--root", str(tmp_path)]
+    ) == 0
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+
+    artifact.write_text('{"ok": false}\n', encoding="utf-8")
+    assert cli.main(
+        ["verify-evidence", "--manifest", str(manifest), "--root", str(tmp_path)]
+    ) == 1
+    assert json.loads(capsys.readouterr().out)["mismatched"] == ["result.json"]
+
+
+def test_doctor_reports_missing_deployment_artifacts_without_loading_model(
+    tmp_path, capsys
+):
+    deployment = tmp_path / "deployment.json"
+    deployment.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "model_version": "v2_quality_lagf",
+                "architecture": "QualityAwareLanguageGatedFusion",
+                "seed": 42,
+                "labels": list(EMOTION_LABELS),
+                "checkpoint": {"path": "missing.pt", "sha256": "0" * 64},
+                "yunet": {"path": "missing.onnx", "sha256": "0" * 64},
+                "encoders": {
+                    name: {
+                        "identifier": name,
+                        "revision": "revision",
+                        "local_path": f"models/{name}",
+                    }
+                    for name in ("text", "audio", "vision", "asr")
+                },
+                "calibration": None,
+                "runtime": {"minimum_free_bytes": 0},
+                "provenance": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = cli.main(
+        [
+            "doctor",
+            "--deployment",
+            str(deployment),
+            "--artifact-root",
+            str(tmp_path),
+        ]
+    )
+
+    report = json.loads(capsys.readouterr().out)
+    assert exit_code == 1
+    assert report["ok"] is False
+    assert "checkpoint file is missing" in report["errors"]
 
 
 def test_feature_command_accepts_pre_encoder_robustness_conditions():

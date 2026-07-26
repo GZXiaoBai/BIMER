@@ -1,7 +1,23 @@
+import subprocess
+import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_m2_acceptance_uses_the_frozen_deployment_manifest_interface():
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "m2_acceptance.py"), "--help"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    assert "--deployment" in result.stdout
+    assert "--artifact-root" in result.stdout
+    assert "--checkpoint" not in result.stdout
 
 
 def test_m2_acceptance_runner_enforces_time_memory_swap_and_exports():

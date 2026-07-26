@@ -8,12 +8,12 @@ from pathlib import Path
 import time
 import subprocess
 
-from bimer.cli import _runtime_analyzer
 from bimer.export import (
     export_analysis_csv,
     export_analysis_figure,
     export_analysis_json,
 )
+from bimer.runtime import build_runtime
 
 
 def _timed_analyze(analyzer, video, language):
@@ -24,20 +24,17 @@ def _timed_analyze(analyzer, video, language):
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--calibration", required=True)
-    parser.add_argument("--yunet-model", required=True)
+    parser.add_argument("--deployment", required=True, type=Path)
+    parser.add_argument("--artifact-root", default=Path("."), type=Path)
     parser.add_argument("--chinese-video", required=True, type=Path)
     parser.add_argument("--english-no-face-video", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    analyzer = _runtime_analyzer(
-        args.checkpoint,
-        args.yunet_model,
-        "auto",
-        calibration_path=args.calibration,
-        cache_directory=str(args.output / "cache"),
-        model_version="auto",
+    analyzer = build_runtime(
+        args.deployment,
+        artifact_root=args.artifact_root,
+        device_name="auto",
+        offline=True,
     )
     chinese, chinese_seconds = _timed_analyze(
         analyzer,

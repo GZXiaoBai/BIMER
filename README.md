@@ -157,23 +157,35 @@ python scripts/run_v2_experiments.py \
 
 ## 演示系统
 
+最终系统只通过唯一的部署清单选择权重、编码器版本和运行参数。答辩前先执行离线预检：
+
+```bash
+bimer doctor \
+  --deployment configs/deployment-v2.json \
+  --artifact-root . \
+  --offline
+```
+
+预检通过后启动系统：
+
 ```bash
 bimer serve \
-  --checkpoint artifacts/experiments/v2/formal/quality_lagf/quality_lagf/joint/seed-42/best.pt \
-  --yunet-model artifacts/models/face_detection_yunet_2023mar.onnx \
-  --device auto
+  --deployment configs/deployment-v2.json \
+  --artifact-root .
 ```
 
 命令行分析：
 
 ```bash
 bimer analyze \
-  --video demo/dialogue.mp4 \
-  --checkpoint artifacts/experiments/v2/formal/quality_lagf/quality_lagf/joint/seed-42/best.pt \
-  --yunet-model artifacts/models/face_detection_yunet_2023mar.onnx \
+  --deployment configs/deployment-v2.json \
+  --artifact-root . \
+  --video artifacts/demo/dialogue.mp4 \
   --language auto \
   --output artifacts/exports/demo
 ```
+
+部署清单固定使用V2 `quality_lagf` seed 42。该种子是预声明的标准部署种子，不是根据正式测试集成绩挑选。受数据许可限制，公开仓库不提供检查点和编码器文件；私有答辩包需按照清单中的相对路径放置这些资产。
 
 ## 测试
 
