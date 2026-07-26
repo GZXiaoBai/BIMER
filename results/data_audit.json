@@ -1,0 +1,52 @@
+{
+  "total_records": 32958,
+  "unique_sample_ids": 32958,
+  "cached_feature_ids": 32958,
+  "missing_cached_features": 0,
+  "orphan_cached_features": 0,
+  "datasets": {
+    "meld": {
+      "train": {
+        "records": 9989,
+        "contexts": 1038,
+        "duplicate_context_utterance_keys": 0
+      },
+      "dev": {
+        "records": 1109,
+        "contexts": 114,
+        "duplicate_context_utterance_keys": 0
+      },
+      "test": {
+        "records": 2610,
+        "contexts": 280,
+        "duplicate_context_utterance_keys": 0
+      }
+    },
+    "emotiontalk": {
+      "train": {
+        "records": 15413,
+        "contexts": 587,
+        "duplicate_context_utterance_keys": 0
+      },
+      "validation": {
+        "records": 1908,
+        "contexts": 71,
+        "duplicate_context_utterance_keys": 0
+      },
+      "test": {
+        "records": 1929,
+        "contexts": 84,
+        "duplicate_context_utterance_keys": 0
+      },
+      "total_contexts": 742,
+      "speaker_tracks": 1476,
+      "two_speaker_contexts": 734
+    }
+  },
+  "acceptance": {
+    "official_split_counts": true,
+    "emotiontalk_742_contexts": true,
+    "no_merged_key_duplicates": true,
+    "all_legacy_features_resolve_by_sample_id": true
+  }
+}

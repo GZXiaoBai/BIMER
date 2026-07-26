@@ -1,0 +1,15 @@
+scope,variant,dataset,label,seed_count,f1_mean,f1_std
+formal,quality_lagf,emotiontalk,anger,3,0.681373262441,0.001009232218
+formal,quality_lagf,emotiontalk,disgust,3,0.351937146859,0.006202264586
+formal,quality_lagf,emotiontalk,fear,3,0.48595313034,0.034172924748
+formal,quality_lagf,emotiontalk,joy,3,0.673445158737,0.028256485165
+formal,quality_lagf,emotiontalk,neutral,3,0.687832151014,0.029610957635
+formal,quality_lagf,emotiontalk,sadness,3,0.525106014033,0.036644727605
+formal,quality_lagf,emotiontalk,surprise,3,0.432427566752,0.008432630012
+formal,quality_lagf,meld,anger,3,0.479259623651,0.016153081294
+formal,quality_lagf,meld,disgust,3,0.092716396904,0.020726454561
+formal,quality_lagf,meld,fear,3,0.136319088319,0.022378969426
+formal,quality_lagf,meld,joy,3,0.522044260988,0.036373078098
+formal,quality_lagf,meld,neutral,3,0.74922993211,0.015646934929
+formal,quality_lagf,meld,sadness,3,0.299415322507,0.045015092387
+formal,quality_lagf,meld,surprise,3,0.492372861188,0.000540578124

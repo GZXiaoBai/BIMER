@@ -1,12 +1,25 @@
 # BIMER：中英文多模态对话情感识别
 
-暂定毕业设计题目：**《基于质量感知与对话上下文建模的中英文多模态情感识别研究与系统实现》**。若 v2 语言嵌入消融确认有稳定收益，再恢复“语言感知”表述。
+毕业设计题目：**《基于质量感知与对话上下文建模的中英文多模态情感识别研究与系统实现》**。
 
 BIMER 联合文本、语音和视频特征，对中英文对话进行七分类情感识别，并输出逐句概率、模态门控权重和整段情绪时间线。项目支持 MELD、EmotionTalk、单模态/融合基线、消融实验、缺失模态、音频噪声、视频丢帧、跨语言测试及 Gradio 演示。
 
-V3 的验证筛选、配对门控排序、单次测试保护、校准、外部视频和 M2 验收流程见 [docs/v3_protocol.md](docs/v3_protocol.md)。V2 结果与检查点永久保留，V3 未通过验证集或外部测试门槛时系统回退 V2。
+正式系统固定采用 V2 `quality_lagf` seed 42。V3 的类别损失与配对门控排序改进均未通过预先声明的验证集门槛，作为负结果保留，不再继续追分。完整数字、统计边界与可复核聚合文件见 [RESULTS.md](RESULTS.md)。
 
 > 本仓库不包含受许可约束的数据集或训练权重。EmotionTalk 下载前必须在 Hugging Face 接受其学术使用条款。模型结果仅用于研究，不构成心理或医疗判断。
+
+## 研究结论
+
+- V2 完整模型的双语平均 weighted-F1 为 **60.148% ± 1.124%**。
+- 相同特征与测试口径下，相比 Early MLP 提高 **1.493 个百分点**；完整对话配对 cluster bootstrap 95% CI 为 **[0.669, 2.200]** 个百分点。
+- 消融明确支持对话上下文与模态随机屏蔽。
+- 质量机制在视频丢帧条件下具有针对性收益，但不应表述为对所有退化均有效。
+- 语言嵌入没有得到消融支持；项目不宣称达到 SOTA，也不宣称超过原数据集论文的最佳单数据集结果。
+
+项目限制、适用范围和伦理边界见 [MODEL_CARD.md](MODEL_CARD.md)、[DATA_AND_LICENSES.md](DATA_AND_LICENSES.md) 与 [ETHICS.md](ETHICS.md)。
+
+模型结构图：[可编辑 SVG](diagram/bimer-architecture/bimer-model-architecture.svg) /
+[2× PNG](diagram/bimer-architecture/bimer-model-architecture@2x.png)。
 
 ## 当前实现
 
@@ -33,7 +46,7 @@ python -m pip install --upgrade pip
 python -m pip install -e '.[dev,inference]'
 ```
 
-严格复现实验使用已提交的 Python 3.11 与 `uv.lock`：
+严格复现使用已提交的 Python 3.11 与 `uv.lock`：
 
 ```bash
 uv sync --extra dev --extra inference --frozen
@@ -190,10 +203,23 @@ bimer analyze \
 ## 测试
 
 ```bash
-python -m pytest
+uv sync --extra dev --extra inference --frozen
+uv run python scripts/check_public_tree.py --root .
+uv run pytest --cov=bimer --cov-fail-under=80
 ```
 
 测试使用合成特征，不需要下载模型和数据集。
+
+公开仓库不附带受限资产，因此演示命令必须先按
+[configs/deployment-v2.json](configs/deployment-v2.json) 配置私有 `artifact_root`，并确保：
+
+```bash
+bimer doctor --deployment configs/deployment-v2.json --artifact-root . --offline
+bimer serve --deployment configs/deployment-v2.json --artifact-root .
+```
+
+贡献方式见 [CONTRIBUTING.md](CONTRIBUTING.md)，引用格式见
+[CITATION.cff](CITATION.cff)。代码采用 Apache-2.0；数据集、模型缓存、训练权重和私人样例不因本代码许可证获得再分发许可。
 
 ## 目录
 
@@ -202,6 +228,7 @@ src/bimer/          数据、模型、训练、评估、推理和界面
 tests/              单元及端到端合成烟雾测试
 scripts/            一键实验与模型下载脚本
 docs/               Kaggle、实验协议和论文结构
+results/            可公开复核的聚合结果，不含逐样本记录
 data/               本地清单；原始数据默认不纳入Git
 artifacts/          特征、检查点、实验结果和导出文件
 ```

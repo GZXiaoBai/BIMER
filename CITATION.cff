@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use BIMER, please cite this software and the associated thesis."
+title: "BIMER: Bilingual Multimodal Emotion Recognition for Dialogues"
+type: software
+authors:
+  - family-names: "Zhou"
+    given-names: "Junjie"
+version: 0.1.0
+date-released: 2026-07-26
+license: Apache-2.0
+abstract: >-
+  A research and demonstration system for seven-class Chinese and English
+  multimodal dialogue emotion recognition with modality quality signals and
+  conversational context.
+keywords:
+  - multimodal emotion recognition
+  - dialogue emotion recognition
+  - bilingual learning
+  - modality robustness
+  - conversational context
