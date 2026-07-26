@@ -202,6 +202,7 @@ def test_offline_verification_reports_missing_encoder_directory(
 
 def test_verification_checks_provenance_files_declared_in_manifest(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     payload = _manifest_payload()
     payload["provenance"] = {
@@ -214,6 +215,10 @@ def test_verification_checks_provenance_files_declared_in_manifest(
     (private / "checkpoint.pt").write_bytes(b"checkpoint")
     (private / "yunet.onnx").write_bytes(b"yunet")
     (private / "selection.json").write_bytes(b"selection")
+    monkeypatch.setattr(
+        "bimer.deployment.shutil.which",
+        lambda name: f"/usr/bin/{name}",
+    )
 
     report = verify_deployment(
         manifest,
