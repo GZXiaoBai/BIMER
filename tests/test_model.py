@@ -5,6 +5,7 @@ from bimer.model import (
     QualityAwareLanguageGatedFusion,
     apply_modality_dropout,
 )
+from bimer.v4_model import AdaptiveContextMixer, AdaptiveContextPrototypeFusion
 
 
 def _inputs():
@@ -150,3 +151,68 @@ def test_quality_input_ablation_keeps_outputs_invariant_to_quality_values():
 
     torch.testing.assert_close(first_output.gates, second_output.gates)
     torch.testing.assert_close(first_output.logits, second_output.logits)
+
+
+def test_adaptive_context_mixer_override_zero_returns_normalized_local_representation():
+    mixer = AdaptiveContextMixer(d_model=4, context_dim=4, gate_override=0.0)
+    local = torch.randn(2, 3, 4)
+    context = torch.randn(2, 3, 4)
+    attention_mask = torch.tensor([[1, 1, 1], [1, 0, 0]], dtype=torch.bool)
+
+    mixed, gates = mixer(local, context, attention_mask)
+
+    expected = mixer.output_norm(local) * attention_mask.unsqueeze(-1)
+    torch.testing.assert_close(mixed, expected)
+    torch.testing.assert_close(gates, torch.zeros_like(gates))
+
+
+def test_adaptive_context_mixer_override_one_adds_projected_context():
+    mixer = AdaptiveContextMixer(d_model=4, context_dim=4, gate_override=1.0)
+    local = torch.randn(2, 3, 4)
+    context = torch.randn(2, 3, 4)
+    attention_mask = torch.tensor([[1, 1, 1], [1, 0, 0]], dtype=torch.bool)
+
+    mixed, gates = mixer(local, context, attention_mask)
+
+    expected = mixer.output_norm(local + mixer.context_projection(context))
+    expected = expected * attention_mask.unsqueeze(-1)
+    torch.testing.assert_close(mixed, expected)
+    torch.testing.assert_close(
+        gates,
+        attention_mask.to(dtype=local.dtype),
+    )
+
+
+def test_adaptive_context_prototype_model_outputs_evidence_without_nan():
+    model = AdaptiveContextPrototypeFusion(
+        text_dim=4,
+        audio_dim=6,
+        vision_dim=5,
+        d_model=8,
+        num_heads=2,
+        transformer_layers=1,
+        transformer_ffn_dim=16,
+        context_hidden_dim=4,
+        num_classes=7,
+        dropout=0.0,
+        modality_dropout=0.0,
+        use_language_embedding=False,
+    ).eval()
+    inputs = _inputs()
+    inputs["modality_quality"] = torch.zeros(2, 3, 3, 4)
+
+    output = model(**inputs)
+
+    assert output.logits.shape == (2, 3, 7)
+    assert output.gates.shape == (2, 3, 3)
+    assert output.context_gates is not None
+    assert output.context_gates.shape == (2, 3)
+    assert output.representations is not None
+    assert output.representations.shape == (2, 3, 8)
+    assert output.prototype_logits is not None
+    assert output.prototype_logits.shape == (2, 3, 7)
+    assert torch.all(output.context_gates >= 0.0)
+    assert torch.all(output.context_gates <= 1.0)
+    assert output.context_gates[1, 2].item() == 0.0
+    assert torch.isfinite(output.logits).all()
+    assert torch.isfinite(output.prototype_logits).all()

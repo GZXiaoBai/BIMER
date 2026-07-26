@@ -62,6 +62,10 @@ class ExperimentConfig:
     corrupted_classification_weight: float = 0.5
     gate_ranking_weight: float = 0.0
     gate_ranking_margin: float = 0.10
+    prototype_loss_weight: float = 0.0
+    prototype_temperature: float = 0.07
+    use_adaptive_context_gate: bool = True
+    context_gate_override: float | None = None
     protocol_stage: str = "standard"
 
 
@@ -113,6 +117,14 @@ def run_experiment(
             raise ValueError("v3_screen is restricted to seed 42")
         if config.evaluate_test:
             raise ValueError("v3_screen must use --skip-test")
+    elif config.protocol_stage == "v4_screen":
+        if config.seed != 42:
+            raise ValueError("v4_screen is restricted to seed 42")
+        if config.evaluate_test:
+            raise ValueError("v4_screen must use --skip-test")
+    elif config.protocol_stage == "v4_formal":
+        if config.evaluate_test:
+            raise ValueError("v4_formal must use --skip-test")
     elif config.protocol_stage not in {"standard", "v3_formal"}:
         raise ValueError("unknown experiment protocol_stage")
     if config.training_scope not in {"joint", "meld", "emotiontalk"}:
@@ -134,8 +146,11 @@ def run_experiment(
         config.corrupted_classification_weight < 0
         or config.gate_ranking_weight < 0
         or config.gate_ranking_margin < 0
+        or config.prototype_loss_weight < 0
     ):
-        raise ValueError("paired objective weights and margin must be non-negative")
+        raise ValueError("training objective weights and margin must be non-negative")
+    if config.prototype_temperature <= 0:
+        raise ValueError("prototype_temperature must be positive")
     if config.gate_ranking_weight > 0 and not paired_requested:
         raise ValueError("gate ranking requires paired augmentations")
     if paired_requested and len(config.augmentation_modalities) != len(
@@ -318,6 +333,9 @@ def run_experiment(
         "use_reliability_gates": config.use_reliability_gates,
         "use_context": config.use_context,
         "use_quality_input": config.use_quality_input,
+        "use_adaptive_context_gate": config.use_adaptive_context_gate,
+        "context_gate_override": config.context_gate_override,
+        "prototype_temperature": config.prototype_temperature,
         "majority_class": majority_class,
         "use_input_normalization": config.use_input_normalization,
     }
@@ -352,6 +370,7 @@ def run_experiment(
                 corrupted_classification_weight=config.corrupted_classification_weight,
                 gate_ranking_weight=config.gate_ranking_weight,
                 gate_ranking_margin=config.gate_ranking_margin,
+                prototype_loss_weight=config.prototype_loss_weight,
             ),
             device=device,
             class_weights=(
@@ -397,20 +416,36 @@ def run_experiment(
             [context_id_by_sample[sample_id] for sample_id in report.sample_ids],
             dtype=str,
         )
-        np.savez_compressed(
-            validation_prediction_directory / f"{dataset}.npz",
-            sample_ids=np.asarray(report.sample_ids, dtype=str),
-            context_ids=validation_context_ids,
-            languages=np.asarray(
+        prediction_payload = {
+            "sample_ids": np.asarray(report.sample_ids, dtype=str),
+            "context_ids": validation_context_ids,
+            "languages": np.asarray(
                 [language_by_sample[sample_id] for sample_id in report.sample_ids],
                 dtype=str,
             ),
-            truth=report.truth.astype(np.int64),
-            prediction=report.prediction.astype(np.int64),
-            probabilities=report.probabilities.astype(np.float32),
-            gates=report.gates.astype(np.float32),
-            modality_quality=report.modality_quality.astype(np.float32),
-            modality_available=report.modality_available.astype(np.bool_),
+            "truth": report.truth.astype(np.int64),
+            "prediction": report.prediction.astype(np.int64),
+            "probabilities": report.probabilities.astype(np.float32),
+            "gates": report.gates.astype(np.float32),
+            "modality_quality": report.modality_quality.astype(np.float32),
+            "modality_available": report.modality_available.astype(np.bool_),
+            "context_lengths": report.context_lengths.astype(np.int64),
+        }
+        if report.context_gates is not None:
+            prediction_payload["context_gates"] = report.context_gates.astype(np.float32)
+        if report.prototype_logits is not None:
+            prediction_payload["prototype_logits"] = report.prototype_logits.astype(np.float32)
+        if report.representations is not None:
+            prediction_payload["representations"] = report.representations.astype(np.float32)
+        if report.local_prediction is not None:
+            prediction_payload["local_prediction"] = report.local_prediction.astype(np.int64)
+        if report.fixed_context_prediction is not None:
+            prediction_payload["fixed_context_prediction"] = report.fixed_context_prediction.astype(
+                np.int64
+            )
+        np.savez_compressed(
+            validation_prediction_directory / f"{dataset}.npz",
+            **prediction_payload,
         )
 
     test_results: dict[str, object] = {}
@@ -435,16 +470,32 @@ def run_experiment(
             "weighted_f1_ci95": list(confidence_interval),
             "bootstrap_unit": "context",
         }
+        prediction_payload = {
+            "sample_ids": np.asarray(report.sample_ids, dtype=str),
+            "context_ids": context_ids,
+            "truth": report.truth.astype(np.int64),
+            "prediction": report.prediction.astype(np.int64),
+            "probabilities": report.probabilities.astype(np.float32),
+            "gates": report.gates.astype(np.float32),
+            "modality_quality": report.modality_quality.astype(np.float32),
+            "modality_available": report.modality_available.astype(np.bool_),
+            "context_lengths": report.context_lengths.astype(np.int64),
+        }
+        if report.context_gates is not None:
+            prediction_payload["context_gates"] = report.context_gates.astype(np.float32)
+        if report.prototype_logits is not None:
+            prediction_payload["prototype_logits"] = report.prototype_logits.astype(np.float32)
+        if report.representations is not None:
+            prediction_payload["representations"] = report.representations.astype(np.float32)
+        if report.local_prediction is not None:
+            prediction_payload["local_prediction"] = report.local_prediction.astype(np.int64)
+        if report.fixed_context_prediction is not None:
+            prediction_payload["fixed_context_prediction"] = report.fixed_context_prediction.astype(
+                np.int64
+            )
         np.savez_compressed(
             prediction_directory / f"{dataset}.npz",
-            sample_ids=np.asarray(report.sample_ids, dtype=str),
-            context_ids=context_ids,
-            truth=report.truth.astype(np.int64),
-            prediction=report.prediction.astype(np.int64),
-            probabilities=report.probabilities.astype(np.float32),
-            gates=report.gates.astype(np.float32),
-            modality_quality=report.modality_quality.astype(np.float32),
-            modality_available=report.modality_available.astype(np.bool_),
+            **prediction_payload,
         )
 
     payload = {
@@ -603,16 +654,32 @@ def evaluate_checkpoint(
             ),
             "bootstrap_unit": "context",
         }
+        prediction_payload = {
+            "sample_ids": np.asarray(report.sample_ids, dtype=str),
+            "context_ids": context_ids,
+            "truth": report.truth.astype(np.int64),
+            "prediction": report.prediction.astype(np.int64),
+            "probabilities": report.probabilities.astype(np.float32),
+            "gates": report.gates.astype(np.float32),
+            "modality_quality": report.modality_quality.astype(np.float32),
+            "modality_available": report.modality_available.astype(np.bool_),
+            "context_lengths": report.context_lengths.astype(np.int64),
+        }
+        if report.context_gates is not None:
+            prediction_payload["context_gates"] = report.context_gates.astype(np.float32)
+        if report.prototype_logits is not None:
+            prediction_payload["prototype_logits"] = report.prototype_logits.astype(np.float32)
+        if report.representations is not None:
+            prediction_payload["representations"] = report.representations.astype(np.float32)
+        if report.local_prediction is not None:
+            prediction_payload["local_prediction"] = report.local_prediction.astype(np.int64)
+        if report.fixed_context_prediction is not None:
+            prediction_payload["fixed_context_prediction"] = report.fixed_context_prediction.astype(
+                np.int64
+            )
         np.savez_compressed(
             prediction_directory / f"{dataset}.npz",
-            sample_ids=np.asarray(report.sample_ids, dtype=str),
-            context_ids=context_ids,
-            truth=report.truth.astype(np.int64),
-            prediction=report.prediction.astype(np.int64),
-            probabilities=report.probabilities.astype(np.float32),
-            gates=report.gates.astype(np.float32),
-            modality_quality=report.modality_quality.astype(np.float32),
-            modality_available=report.modality_available.astype(np.bool_),
+            **prediction_payload,
         )
     payload = {
         "condition": (

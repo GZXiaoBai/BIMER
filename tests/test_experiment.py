@@ -16,6 +16,45 @@ from bimer.schema import UtteranceRecord
 from bimer.training import DialogueExample
 
 
+def _write_tiny_joint_data(tmp_path):
+    records = []
+    store = FeatureStore(tmp_path / "features")
+    split_names = {
+        "meld": ("train", "dev"),
+        "emotiontalk": ("train", "validation"),
+    }
+    for dataset, splits in split_names.items():
+        for split in splits:
+            group = [
+                UtteranceRecord(
+                    dataset=dataset,
+                    split=split,
+                    dialogue_id=f"{dataset}-{split}",
+                    utterance_id=index,
+                    text="line",
+                    emotion="neutral" if index == 0 else "joy",
+                    language="en" if dataset == "meld" else "zh",
+                    start_seconds=float(index),
+                    end_seconds=float(index + 1),
+                )
+                for index in range(2)
+            ]
+            records.extend(group)
+            store.write(
+                dataset,
+                split,
+                0,
+                FeatureShard(
+                    sample_ids=np.asarray([record.sample_id for record in group]),
+                    text=np.ones((2, 4), np.float32),
+                    audio=np.ones((2, 6), np.float32),
+                    vision=np.ones((2, 5), np.float32),
+                    modality_mask=np.ones((2, 3), np.bool_),
+                ),
+            )
+    return write_manifest(records, tmp_path / "manifest.jsonl"), tmp_path / "features"
+
+
 def test_without_modalities_zeros_features_and_preserves_remaining_modality():
     example = DialogueExample(
         dataset="meld",
@@ -260,6 +299,81 @@ def test_validation_screen_can_skip_all_test_evaluation(tmp_path):
     with np.load(validation_prediction, allow_pickle=False) as predictions:
         assert predictions["probabilities"].shape == (2, 7)
         assert predictions["languages"].tolist() == ["zh", "zh"]
+
+
+def test_v4_screen_saves_context_and_prototype_evidence_without_test_access(tmp_path):
+    manifest, features = _write_tiny_joint_data(tmp_path)
+
+    result = run_experiment(
+        manifest_path=manifest,
+        feature_root=features,
+        output_directory=tmp_path / "results",
+        config=ExperimentConfig(
+            model="adaptive_context_prototype",
+            seed=42,
+            batch_size=2,
+            hidden_dim=8,
+            max_epochs=1,
+            min_epochs=1,
+            patience=1,
+            evaluate_test=False,
+            protocol_stage="v4_screen",
+            use_language_embedding=False,
+            prototype_loss_weight=0.1,
+            prototype_temperature=0.07,
+        ),
+        device_name="cpu",
+    )
+
+    payload = json.loads(result.read_text(encoding="utf-8"))
+    assert payload["config"]["prototype_loss_weight"] == 0.1
+    assert payload["test"] == {}
+    for dataset in ("meld", "emotiontalk"):
+        prediction_path = result.parent / "validation_predictions" / f"{dataset}.npz"
+        with np.load(prediction_path, allow_pickle=False) as predictions:
+            assert predictions["context_lengths"].tolist() == [2, 2]
+            assert predictions["context_gates"].shape == (2,)
+            assert predictions["prototype_logits"].shape == (2, 7)
+            assert np.isfinite(predictions["context_gates"]).all()
+            assert np.isfinite(predictions["prototype_logits"]).all()
+
+
+def test_v4_protocol_stages_protect_official_test_access(tmp_path):
+    with pytest.raises(ValueError, match="v4_screen is restricted to seed 42"):
+        run_experiment(
+            manifest_path=tmp_path / "missing.jsonl",
+            feature_root=tmp_path / "missing-features",
+            output_directory=tmp_path / "results",
+            config=ExperimentConfig(
+                seed=123,
+                evaluate_test=False,
+                protocol_stage="v4_screen",
+            ),
+            device_name="cpu",
+        )
+    with pytest.raises(ValueError, match="v4_screen must use --skip-test"):
+        run_experiment(
+            manifest_path=tmp_path / "missing.jsonl",
+            feature_root=tmp_path / "missing-features",
+            output_directory=tmp_path / "results",
+            config=ExperimentConfig(
+                seed=42,
+                evaluate_test=True,
+                protocol_stage="v4_screen",
+            ),
+            device_name="cpu",
+        )
+    with pytest.raises(ValueError, match="v4_formal must use --skip-test"):
+        run_experiment(
+            manifest_path=tmp_path / "missing.jsonl",
+            feature_root=tmp_path / "missing-features",
+            output_directory=tmp_path / "results",
+            config=ExperimentConfig(
+                evaluate_test=True,
+                protocol_stage="v4_formal",
+            ),
+            device_name="cpu",
+        )
 
 
 def test_training_can_append_a_corrupted_feature_view(tmp_path):

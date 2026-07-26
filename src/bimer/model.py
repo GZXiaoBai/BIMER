@@ -11,6 +11,11 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 class FusionOutput:
     logits: Tensor
     gates: Tensor
+    context_gates: Tensor | None = None
+    representations: Tensor | None = None
+    prototype_logits: Tensor | None = None
+    local_logits: Tensor | None = None
+    fixed_context_logits: Tensor | None = None
 
 
 def apply_modality_dropout(mask: Tensor, probability: float) -> Tensor:
@@ -105,7 +110,7 @@ class LanguageAwareGatedFusion(nn.Module):
             bidirectional=True,
         )
         classifier_dim = context_hidden_dim * 2 if use_context else d_model
-        self.classifier = nn.Sequential(
+        self.classifier: nn.Module = nn.Sequential(
             nn.Dropout(dropout),
             nn.Linear(classifier_dim, num_classes),
         )

@@ -13,6 +13,7 @@ from bimer.training import (
     train_epoch,
     validation_selection_score,
 )
+from bimer.v4_model import AdaptiveContextPrototypeFusion
 
 
 def _example(dataset: str, length: int, language_id: int) -> DialogueExample:
@@ -122,6 +123,36 @@ def test_train_epoch_accepts_balanced_softmax_with_class_counts():
     assert np.isfinite(loss)
 
 
+def test_train_epoch_updates_shared_prototypes_when_auxiliary_loss_is_enabled():
+    batch = collate_dialogues([_example("meld", 3, 0), _example("emotiontalk", 3, 1)])
+    model = AdaptiveContextPrototypeFusion(
+        text_dim=4,
+        audio_dim=6,
+        vision_dim=5,
+        d_model=8,
+        num_heads=2,
+        transformer_layers=1,
+        transformer_ffn_dim=16,
+        context_hidden_dim=4,
+        num_classes=2,
+        dropout=0.0,
+        modality_dropout=0.0,
+    )
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    before = model.prototypes.detach().clone()
+
+    loss = train_epoch(
+        model,
+        [batch],
+        optimizer,
+        device=torch.device("cpu"),
+        prototype_loss_weight=0.1,
+    )
+
+    assert np.isfinite(loss)
+    assert not torch.equal(before, model.prototypes.detach())
+
+
 def test_train_epoch_combines_corrupted_classification_and_gate_ranking():
     clean = _example("meld", 3, 0)
     corrupted = DialogueExample(
@@ -168,7 +199,50 @@ def test_evaluation_ignores_padding_and_reports_gates():
     assert report.gates.shape == (5, 3)
     assert report.modality_quality.shape == (5, 3, 4)
     assert report.modality_available.shape == (5, 3)
+    assert report.context_lengths.tolist() == [2, 2, 3, 3, 3]
+    assert report.context_gates is None
+    assert report.prototype_logits is None
+    assert report.representations is None
+    assert report.local_prediction is None
+    assert report.fixed_context_prediction is None
     assert set(report.metrics) >= {"weighted_f1", "macro_f1", "accuracy"}
+
+
+def test_evaluation_reports_v4_context_and_prototype_evidence():
+    batch = collate_dialogues([_example("meld", 2, 0), _example("emotiontalk", 3, 1)])
+    model = AdaptiveContextPrototypeFusion(
+        text_dim=4,
+        audio_dim=6,
+        vision_dim=5,
+        d_model=8,
+        num_heads=2,
+        transformer_layers=1,
+        transformer_ffn_dim=16,
+        context_hidden_dim=4,
+        num_classes=2,
+        dropout=0.0,
+        modality_dropout=0.0,
+    )
+
+    report = evaluate_batches(
+        model,
+        [batch],
+        device=torch.device("cpu"),
+        label_names=("neutral", "joy"),
+    )
+
+    assert report.context_gates is not None
+    assert report.context_gates.shape == (5,)
+    assert report.prototype_logits is not None
+    assert report.prototype_logits.shape == (5, 2)
+    assert report.representations is not None
+    assert report.representations.shape == (5, 8)
+    assert report.local_prediction is not None
+    assert report.local_prediction.shape == (5,)
+    assert report.fixed_context_prediction is not None
+    assert report.fixed_context_prediction.shape == (5,)
+    assert np.isfinite(report.context_gates).all()
+    assert np.isfinite(report.prototype_logits).all()
 
 
 def test_validation_score_is_mean_of_bilingual_weighted_f1():

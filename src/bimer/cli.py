@@ -176,6 +176,7 @@ def build_parser() -> argparse.ArgumentParser:
             "early_context",
             "lagf",
             "quality_lagf",
+            "adaptive_context_prototype",
         ],
         default="lagf",
     )
@@ -220,6 +221,10 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--corrupted-classification-weight", type=float, default=0.5)
     train.add_argument("--gate-ranking-weight", type=float, default=0.0)
     train.add_argument("--gate-ranking-margin", type=float, default=0.10)
+    train.add_argument("--prototype-loss-weight", type=float, default=0.0)
+    train.add_argument("--prototype-temperature", type=float, default=0.07)
+    train.add_argument("--no-adaptive-context-gate", action="store_true")
+    train.add_argument("--context-gate-override", type=float)
     train.add_argument(
         "--v3-screen",
         action="store_true",
@@ -229,6 +234,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--v3-formal",
         action="store_true",
         help="frozen V3 formal training; test evaluation remains a separate guarded stage",
+    )
+    train.add_argument(
+        "--v4-screen",
+        action="store_true",
+        help="seed-42 V4 validation screening; requires --skip-test",
+    )
+    train.add_argument(
+        "--v4-formal",
+        action="store_true",
+        help="frozen V4 formal training; official test remains separately guarded",
     )
     train.add_argument(
         "--skip-test",
@@ -720,8 +735,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "train":
-        if args.v3_screen and args.v3_formal:
-            raise ValueError("v3-screen and v3-formal are mutually exclusive")
+        protocol_flags = (
+            args.v3_screen,
+            args.v3_formal,
+            args.v4_screen,
+            args.v4_formal,
+        )
+        if sum(bool(flag) for flag in protocol_flags) > 1:
+            raise ValueError("experiment protocol stage flags are mutually exclusive")
         result = run_experiment(
             manifest_path=args.manifest,
             feature_root=args.features,
@@ -751,10 +772,22 @@ def main(argv: list[str] | None = None) -> int:
                 corrupted_classification_weight=args.corrupted_classification_weight,
                 gate_ranking_weight=args.gate_ranking_weight,
                 gate_ranking_margin=args.gate_ranking_margin,
+                prototype_loss_weight=args.prototype_loss_weight,
+                prototype_temperature=args.prototype_temperature,
+                use_adaptive_context_gate=not args.no_adaptive_context_gate,
+                context_gate_override=args.context_gate_override,
                 protocol_stage=(
                     "v3_screen"
                     if args.v3_screen
-                    else ("v3_formal" if args.v3_formal else "standard")
+                    else (
+                        "v3_formal"
+                        if args.v3_formal
+                        else (
+                            "v4_screen"
+                            if args.v4_screen
+                            else ("v4_formal" if args.v4_formal else "standard")
+                        )
+                    )
                 ),
             ),
             device_name=args.device,
