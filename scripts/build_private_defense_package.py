@@ -84,7 +84,7 @@ def copy_private_path(
         shutil.copytree(
             source,
             target,
-            symlinks=False,
+            symlinks=True,
             copy_function=lambda src, dst: link_or_copy(
                 src,
                 dst,
