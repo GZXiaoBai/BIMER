@@ -1,7 +1,11 @@
+import importlib
+import sys
+
 import numpy as np
 import pytest
 import torch
 
+from bimer.model import QualityAwareLanguageGatedFusion
 from bimer.paired_training import (
     CorruptionPair,
     build_corruption_pairs,
@@ -9,7 +13,15 @@ from bimer.paired_training import (
     gate_ranking_loss,
 )
 from bimer.training import DialogueExample
-from bimer.model import QualityAwareLanguageGatedFusion
+
+
+def test_paired_training_can_load_without_importing_training_module():
+    sys.modules.pop("bimer.paired_training", None)
+    sys.modules.pop("bimer.training", None)
+
+    importlib.import_module("bimer.paired_training")
+
+    assert "bimer.training" not in sys.modules
 
 
 def _example(*, feature_value: float = 1.0, available=True) -> DialogueExample:
@@ -159,9 +171,7 @@ def test_ranking_optimization_reduces_the_corrupted_modality_gate():
 
     with torch.no_grad():
         initial_clean = model(**common, modality_quality=clean_quality).gates[:, :, 1]
-        initial_corrupted = model(
-            **common, modality_quality=corrupted_quality
-        ).gates[:, :, 1]
+        initial_corrupted = model(**common, modality_quality=corrupted_quality).gates[:, :, 1]
         initial_difference = float((initial_clean - initial_corrupted).mean())
     for _ in range(40):
         optimizer.zero_grad()
@@ -180,9 +190,7 @@ def test_ranking_optimization_reduces_the_corrupted_modality_gate():
 
     with torch.no_grad():
         final_clean = model(**common, modality_quality=clean_quality).gates[:, :, 1]
-        final_corrupted = model(
-            **common, modality_quality=corrupted_quality
-        ).gates[:, :, 1]
+        final_corrupted = model(**common, modality_quality=corrupted_quality).gates[:, :, 1]
         final_difference = float((final_clean - final_corrupted).mean())
 
     assert final_difference > initial_difference

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import random
+from dataclasses import dataclass
 from typing import Literal, Sequence
 
 import torch
 from torch import Tensor
 from torch.utils.data import Sampler
 
-from .training import DialogueExample, MultimodalBatch, collate_dialogues
+from .batching import DialogueExample, MultimodalBatch, collate_dialogues
 
 ModalityName = Literal["text", "audio", "vision"]
 MODALITY_INDEX: dict[ModalityName, int] = {

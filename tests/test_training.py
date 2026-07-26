@@ -2,6 +2,7 @@ import numpy as np
 import torch
 
 from bimer.baselines import EarlyFusionContext, EarlyFusionMLP, UnimodalClassifier
+from bimer.paired_training import CorruptionPair, collate_corruption_pairs
 from bimer.training import (
     BalancedDialogueSampler,
     DialogueExample,
@@ -12,7 +13,6 @@ from bimer.training import (
     train_epoch,
     validation_selection_score,
 )
-from bimer.paired_training import CorruptionPair, collate_corruption_pairs
 
 
 def _example(dataset: str, length: int, language_id: int) -> DialogueExample:
@@ -135,9 +135,7 @@ def test_train_epoch_combines_corrupted_classification_and_gate_ranking():
         language_id=clean.language_id,
         modality_quality=np.asarray(clean.modality_quality).copy(),
     )
-    paired = collate_corruption_pairs(
-        [CorruptionPair(clean, corrupted, "audio", severity=10.0)]
-    )
+    paired = collate_corruption_pairs([CorruptionPair(clean, corrupted, "audio", severity=10.0)])
     batch = collate_dialogues([clean])
     model = EarlyFusionMLP((4, 6, 5), hidden_dim=8, num_classes=2)
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
@@ -174,13 +172,19 @@ def test_evaluation_ignores_padding_and_reports_gates():
 
 
 def test_validation_score_is_mean_of_bilingual_weighted_f1():
-    assert validation_selection_score(
-        {"meld": {"weighted_f1": 0.6}, "emotiontalk": {"weighted_f1": 0.8}}
-    ) == 0.7
-    assert validation_selection_score(
-        {"meld": {"weighted_f1": 0.6}, "emotiontalk": {"weighted_f1": 0.8}},
-        datasets=("meld",),
-    ) == 0.6
+    assert (
+        validation_selection_score(
+            {"meld": {"weighted_f1": 0.6}, "emotiontalk": {"weighted_f1": 0.8}}
+        )
+        == 0.7
+    )
+    assert (
+        validation_selection_score(
+            {"meld": {"weighted_f1": 0.6}, "emotiontalk": {"weighted_f1": 0.8}},
+            datasets=("meld",),
+        )
+        == 0.6
+    )
 
 
 def test_fit_model_writes_best_checkpoint(tmp_path):
