@@ -2,6 +2,7 @@ from bimer.app import (
     analysis_rows,
     distribution_figure,
     modality_quality_figure,
+    result_summary_markdown,
     timeline_figure,
     timeline_html,
     transcript_rows,
@@ -61,3 +62,37 @@ def test_timeline_html_can_seek_the_uploaded_video():
     assert "currentTime=0.0" in html
     assert "currentTime=1.5" in html
     assert "dialogue-video" in html
+
+
+def test_result_summary_surfaces_model_runtime_uncertainty_and_quality_warnings():
+    result = AnalysisResult(
+        language="zh",
+        model_version="v2_quality_lagf",
+        runtime_profile={
+            "text": 1.2,
+            "audio": 2.3,
+            "vision": 3.4,
+            "fusion": 0.5,
+            "export": 0.1,
+        },
+        segments=(
+            AnalysisSegment(
+                0.0,
+                1.0,
+                "你好",
+                "neutral",
+                {"neutral": 0.4},
+                {"text": 1.0},
+                confidence_status="uncertain",
+                quality_warnings=("vision_unavailable",),
+            ),
+        ),
+    )
+
+    summary = result_summary_markdown(result)
+
+    assert "v2_quality_lagf" in summary
+    assert "中文" in summary
+    assert "不确定 1 句" in summary
+    assert "vision_unavailable" in summary
+    assert "总计 7.50s" in summary

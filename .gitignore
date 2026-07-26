@@ -16,6 +16,7 @@ data/*
 !data/templates/
 !data/templates/**
 artifacts/
+output/
 *.log
 .DS_Store
 Hugging Face Token.txt

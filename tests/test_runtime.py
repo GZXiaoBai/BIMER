@@ -80,8 +80,10 @@ def test_runtime_assembly_passes_the_resolved_model_version(
             pass
 
     class FakeExtractor:
+        calls = []
+
         def __init__(self, *_args, **_kwargs) -> None:
-            pass
+            self.__class__.calls.append((_args, _kwargs))
 
     checkpoint = {
         "metadata": {
@@ -98,7 +100,7 @@ def test_runtime_assembly_passes_the_resolved_model_version(
     monkeypatch.setattr(runtime_module, "YuNetFaceCropper", FakeExtractor)
     monkeypatch.setattr(runtime_module, "RuntimeFeatureCache", FakeExtractor)
     monkeypatch.setattr(runtime_module, "PretrainedFeaturePipeline", FakeExtractor)
-    monkeypatch.setattr(runtime_module, "FasterWhisperTranscriber", FakeExtractor)
+    monkeypatch.setattr(runtime_module, "SubprocessWhisperTranscriber", FakeExtractor)
     monkeypatch.setattr(
         runtime_module,
         "DialogueAnalyzer",
@@ -113,6 +115,7 @@ def test_runtime_assembly_passes_the_resolved_model_version(
     )
 
     assert assembled["model_version"] == "v2_quality_lagf"
+    assert FakeExtractor.calls[-1][1]["timeout_seconds"] == 600
 
 
 def test_runtime_assembly_resolves_ranked_v3_and_loads_calibration(
@@ -145,7 +148,7 @@ def test_runtime_assembly_resolves_ranked_v3_and_loads_calibration(
     monkeypatch.setattr(runtime_module, "YuNetFaceCropper", FakeExtractor)
     monkeypatch.setattr(runtime_module, "RuntimeFeatureCache", FakeExtractor)
     monkeypatch.setattr(runtime_module, "PretrainedFeaturePipeline", FakeExtractor)
-    monkeypatch.setattr(runtime_module, "FasterWhisperTranscriber", FakeExtractor)
+    monkeypatch.setattr(runtime_module, "SubprocessWhisperTranscriber", FakeExtractor)
     monkeypatch.setattr(runtime_module, "DialogueAnalyzer", lambda **kwargs: kwargs)
     monkeypatch.setattr(
         runtime_module.CalibrationProfile,
@@ -200,7 +203,7 @@ def test_runtime_assembly_falls_back_to_cpu_when_mps_extractor_fails(
     monkeypatch.setattr(runtime_module, "YuNetFaceCropper", FakeExtractor)
     monkeypatch.setattr(runtime_module, "RuntimeFeatureCache", FakeExtractor)
     monkeypatch.setattr(runtime_module, "PretrainedFeaturePipeline", FailingPipeline)
-    monkeypatch.setattr(runtime_module, "FasterWhisperTranscriber", FakeExtractor)
+    monkeypatch.setattr(runtime_module, "SubprocessWhisperTranscriber", FakeExtractor)
     monkeypatch.setattr(runtime_module, "DialogueAnalyzer", lambda **kwargs: kwargs)
 
     with pytest.warns(RuntimeWarning, match="falling back to CPU"):

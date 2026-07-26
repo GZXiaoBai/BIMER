@@ -5,6 +5,7 @@ from pathlib import Path
 
 import torch
 
+from .asr_subprocess import SubprocessWhisperTranscriber
 from .calibration import CalibrationProfile
 from .deployment import DeploymentManifest, verify_deployment
 from .experiment import resolve_device
@@ -16,7 +17,6 @@ from .feature_extractors import (
 )
 from .inference import (
     DialogueAnalyzer,
-    FasterWhisperTranscriber,
     PretrainedFeaturePipeline,
 )
 from .model_factory import build_model
@@ -75,6 +75,7 @@ def build_runtime(
         ),
         cache_directory=root / manifest.runtime.cache_directory,
         model_version=manifest.model_version,
+        asr_timeout_seconds=manifest.runtime.asr_timeout_seconds,
         encoder_versions={
             name: f"{reference.identifier}@{reference.revision}"
             for name, reference in manifest.encoders.items()
@@ -106,6 +107,7 @@ def build_legacy_runtime(
         calibration_path=(Path(calibration_path) if calibration_path is not None else None),
         cache_directory=Path(cache_directory),
         model_version=model_version,
+        asr_timeout_seconds=600,
         encoder_versions={
             "text": text_model,
             "audio": audio_model,
@@ -126,6 +128,7 @@ def _assemble_runtime(
     calibration_path: Path | None,
     cache_directory: Path,
     model_version: str,
+    asr_timeout_seconds: int,
     encoder_versions: dict[str, str],
 ) -> DialogueAnalyzer:
     device = resolve_device(device_name)
@@ -196,9 +199,10 @@ def _assemble_runtime(
         CalibrationProfile.load(calibration_path) if calibration_path is not None else None
     )
     return DialogueAnalyzer(
-        transcriber=FasterWhisperTranscriber(
+        transcriber=SubprocessWhisperTranscriber(
             whisper_model,
             device=whisper_device,
+            timeout_seconds=asr_timeout_seconds,
         ),
         feature_pipeline=pipeline,
         model=model,

@@ -106,6 +106,8 @@ def test_manifest_rejects_incompatible_public_contracts(
         ({"window_size": 0}, "window_size"),
         ({"window_size": 32, "window_overlap": 32}, "window_overlap"),
         ({"minimum_free_bytes": -1}, "minimum_free_bytes"),
+        ({"asr_process_isolation": False}, "asr_process_isolation"),
+        ({"asr_timeout_seconds": 0}, "asr_timeout_seconds"),
     ],
 )
 def test_manifest_rejects_invalid_runtime_settings(

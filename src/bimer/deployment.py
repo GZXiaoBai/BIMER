@@ -83,6 +83,8 @@ class RuntimeSettings:
     window_overlap: int = 8
     cache_directory: Path = Path("artifacts/runtime-cache")
     minimum_free_bytes: int = 2 * 1024**3
+    asr_process_isolation: bool = True
+    asr_timeout_seconds: int = 600
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, object]) -> RuntimeSettings:
@@ -94,6 +96,8 @@ class RuntimeSettings:
                 field="runtime.cache_directory",
             ),
             minimum_free_bytes=int(cast(int, value.get("minimum_free_bytes", 2 * 1024**3))),
+            asr_process_isolation=value.get("asr_process_isolation", True) is True,
+            asr_timeout_seconds=int(cast(int, value.get("asr_timeout_seconds", 600))),
         )
         if settings.window_size <= 0:
             raise ValueError("runtime.window_size must be positive")
@@ -101,6 +105,10 @@ class RuntimeSettings:
             raise ValueError("runtime.window_overlap must be smaller than window_size")
         if settings.minimum_free_bytes < 0:
             raise ValueError("runtime.minimum_free_bytes must be non-negative")
+        if not settings.asr_process_isolation:
+            raise ValueError("runtime.asr_process_isolation must be true")
+        if settings.asr_timeout_seconds <= 0:
+            raise ValueError("runtime.asr_timeout_seconds must be positive")
         return settings
 
 

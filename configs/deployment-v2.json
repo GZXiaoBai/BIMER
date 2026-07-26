@@ -47,7 +47,9 @@
     "window_size": 32,
     "window_overlap": 8,
     "cache_directory": "artifacts/runtime-cache",
-    "minimum_free_bytes": 2147483648
+    "minimum_free_bytes": 2147483648,
+    "asr_process_isolation": true,
+    "asr_timeout_seconds": 600
   },
   "provenance": {
     "selection_policy": "predeclared canonical seed 42; never selected from official test scores",

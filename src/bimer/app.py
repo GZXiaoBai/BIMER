@@ -58,6 +58,36 @@ def analysis_rows(result: AnalysisResult) -> list[list[object]]:
     return rows
 
 
+def result_summary_markdown(result: AnalysisResult) -> str:
+    language = "中文" if result.language == "zh" else "英文"
+    uncertain = sum(segment.confidence_status == "uncertain" for segment in result.segments)
+    warnings = sorted(
+        {warning for segment in result.segments for warning in segment.quality_warnings}
+    )
+    stage_names = {
+        "transcription": "转写",
+        "text": "文本",
+        "audio": "语音",
+        "vision": "视觉",
+        "fusion": "融合",
+        "export": "导出",
+    }
+    elapsed = sum(result.runtime_profile.values())
+    stages = " · ".join(
+        f"{stage_names.get(name, name)} {seconds:.2f}s"
+        for name, seconds in result.runtime_profile.items()
+    )
+    warning_text = "、".join(warnings) if warnings else "无"
+    return (
+        "### 分析摘要\n"
+        f"- **模型版本**：`{result.model_version}`　"
+        f"**语言**：{language}　**语句数**：{len(result.segments)}　"
+        f"**置信度**：不确定 {uncertain} 句\n"
+        f"- **质量警告**：{warning_text}\n"
+        f"- **运行耗时**：{stages} · **总计 {elapsed:.2f}s**"
+    )
+
+
 def timeline_figure(result: AnalysisResult):
     figure, axis = plt.subplots(figsize=(12, 2.8))
     for index, segment in enumerate(result.segments):
@@ -175,21 +205,40 @@ def create_app(
 
     export_directory = Path(export_root)
 
-    def run_transcription(video: str, requested_language: str):
+    def run_transcription(
+        video: str,
+        requested_language: str,
+        progress=gr.Progress(),
+    ):
         if not video:
             raise gr.Error("请先上传视频")
-        detected, segments = analyzer.transcribe(Path(video), requested_language)
+        progress(0.05, desc="正在检查视频并加载转写任务")
+        try:
+            detected, segments = analyzer.transcribe(Path(video), requested_language)
+        except (ValueError, RuntimeError) as exc:
+            raise gr.Error(f"转写失败：{exc}") from exc
+        progress(1.0, desc="转写与切句完成")
         return transcript_rows(segments), detected
 
-    def run_analysis(video: str, detected_language: str, rows: Any):
+    def run_analysis(
+        video: str,
+        detected_language: str,
+        rows: Any,
+        progress=gr.Progress(),
+    ):
         if not video:
             raise gr.Error("请先上传视频")
         segments = _rows_to_segments(rows)
-        result = analyzer.analyze_segments(
-            Path(video),
-            detected_language=detected_language,
-            segments=segments,
-        )
+        progress(0.05, desc="正在校验人工修改后的转写")
+        try:
+            result = analyzer.analyze_segments(
+                Path(video),
+                detected_language=detected_language,
+                segments=segments,
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise gr.Error(f"情感分析失败：{exc}") from exc
+        progress(0.85, desc="正在生成图表和导出文件")
         run_id = uuid.uuid4().hex
         export_started = time.perf_counter()
         csv_path = export_analysis_csv(result, export_directory / f"{run_id}.csv")
@@ -198,7 +247,9 @@ def create_app(
         runtime_profile["export"] = time.perf_counter() - export_started
         result = replace(result, runtime_profile=runtime_profile)
         json_path = export_analysis_json(result, export_directory / f"{run_id}.json")
+        progress(1.0, desc="分析完成")
         return (
+            result_summary_markdown(result),
             analysis_rows(result),
             timeline_figure(result),
             distribution_figure(result),
@@ -241,6 +292,7 @@ def create_app(
         with gr.Row():
             clear_cache_button = gr.Button("清除24小时特征缓存")
             cache_status = gr.Textbox(label="缓存状态", interactive=False)
+        summary = gr.Markdown("### 分析摘要\n尚未开始分析。")
         analysis = gr.Dataframe(
             headers=[
                 "start_seconds",
@@ -282,6 +334,7 @@ def create_app(
             run_analysis,
             inputs=[video, detected_state, transcript],
             outputs=[
+                summary,
                 analysis,
                 timeline,
                 distribution,
