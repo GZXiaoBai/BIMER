@@ -16,6 +16,8 @@ PRIVATE_ASSET_PATHS = (
     Path("artifacts/models"),
     Path("artifacts/demo"),
     Path("artifacts/analysis/m2-smoke-en.json"),
+    Path("artifacts/analysis/v2-formal-ablations"),
+    Path("artifacts/analysis/v2-robustness"),
     Path("artifacts/exports/m2-smoke-en"),
     Path("output/deliverables"),
 )
