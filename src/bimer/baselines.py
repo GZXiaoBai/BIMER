@@ -30,10 +30,11 @@ class MajorityClassifier(nn.Module):
         audio_features: Tensor,
         vision_features: Tensor,
         modality_mask: Tensor,
+        modality_quality: Tensor | None = None,
         attention_mask: Tensor,
         language_ids: Tensor,
     ) -> FusionOutput:
-        del audio_features, vision_features, language_ids
+        del audio_features, vision_features, language_ids, modality_quality
         logits = torch.zeros(
             *text_features.shape[:2],
             self.num_classes,
@@ -74,10 +75,11 @@ class UnimodalClassifier(nn.Module):
         audio_features: Tensor,
         vision_features: Tensor,
         modality_mask: Tensor,
+        modality_quality: Tensor | None = None,
         attention_mask: Tensor,
         language_ids: Tensor,
     ) -> FusionOutput:
-        del language_ids
+        del language_ids, modality_quality
         features = {
             "text": text_features,
             "audio": audio_features,
@@ -114,10 +116,11 @@ class EarlyFusionMLP(nn.Module):
         audio_features: Tensor,
         vision_features: Tensor,
         modality_mask: Tensor,
+        modality_quality: Tensor | None = None,
         attention_mask: Tensor,
         language_ids: Tensor,
     ) -> FusionOutput:
-        del language_ids
+        del language_ids, modality_quality
         features = torch.cat(
             (
                 text_features * modality_mask[..., 0:1],
@@ -162,10 +165,11 @@ class EarlyFusionContext(nn.Module):
         audio_features: Tensor,
         vision_features: Tensor,
         modality_mask: Tensor,
+        modality_quality: Tensor | None = None,
         attention_mask: Tensor,
         language_ids: Tensor,
     ) -> FusionOutput:
-        del language_ids
+        del language_ids, modality_quality
         concatenated = torch.cat(
             (
                 text_features * modality_mask[..., 0:1],

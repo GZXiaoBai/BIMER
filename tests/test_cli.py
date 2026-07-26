@@ -1,10 +1,11 @@
 import argparse
 import json
+from pathlib import Path
 
 import bimer.cli as cli
 import numpy as np
 import pytest
-from bimer.cli import build_parser
+from bimer.cli import _runtime_devices, build_parser
 from bimer.feature_store import FeatureShard, FeatureStore
 from bimer.schema import UtteranceRecord
 
@@ -37,7 +38,11 @@ def test_cli_exposes_all_reproducible_workflow_commands():
         "validate",
         "extract-features",
         "verify-features",
-        "train",
+        "feature-stats",
+            "overfit-smoke",
+            "sample-corruption-manifest",
+            "attach-quality",
+            "train",
         "evaluate",
         "analyze",
         "serve",
@@ -48,6 +53,118 @@ def test_cli_exposes_all_reproducible_workflow_commands():
         if isinstance(action, argparse._SubParsersAction)
     )
     assert set(subparsers.choices) == expected
+
+
+def test_train_cli_exposes_v3_classification_loss_options():
+    args = build_parser().parse_args(
+        [
+            "train",
+            "--manifest",
+            "manifest.jsonl",
+            "--features",
+            "features",
+            "--output",
+            "results",
+            "--classification-loss",
+            "focal",
+            "--focal-gamma",
+            "1.5",
+            "--augmentation-modality",
+            "audio",
+            "--augmentation-severity",
+            "10",
+            "--gate-ranking-weight",
+            "0.1",
+            "--skip-test",
+        ]
+    )
+
+    assert args.classification_loss == "focal"
+    assert args.focal_gamma == 1.5
+    assert args.augmentation_modality == ["audio"]
+    assert args.augmentation_severity == [10.0]
+    assert args.gate_ranking_weight == 0.1
+
+
+def test_feature_stats_command_writes_report(tmp_path, monkeypatch, capsys):
+    records = make_cli_records(2)
+    store = FeatureStore(tmp_path / "features")
+    store.write(
+        "emotiontalk",
+        "train",
+        0,
+        FeatureShard(
+            sample_ids=np.asarray([record.sample_id for record in records]),
+            text=np.ones((2, 768), dtype=np.float32),
+            audio=np.ones((2, 1024), dtype=np.float32),
+            vision=np.ones((2, 512), dtype=np.float32),
+            modality_mask=np.ones((2, 3), dtype=np.bool_),
+        ),
+    )
+    monkeypatch.setattr(cli, "read_manifest", lambda _path: records)
+    output = tmp_path / "reports" / "stats.json"
+
+    result = cli.main(
+        [
+            "feature-stats",
+            "--manifest",
+            str(tmp_path / "manifest.jsonl"),
+            "--features",
+            str(store.root),
+            "--dataset",
+            "emotiontalk",
+            "--split",
+            "train",
+            "--output",
+            str(output),
+        ]
+    )
+
+    assert result == 0
+    assert json.loads(output.read_text(encoding="utf-8"))["sample_count"] == 2
+    assert json.loads(capsys.readouterr().out)["shard_count"] == 1
+
+
+def test_overfit_smoke_command_writes_report(tmp_path, monkeypatch, capsys):
+    captured = {}
+
+    def fake_run(records, store, **kwargs):
+        captured["records"] = records
+        captured["store"] = store
+        captured.update(kwargs)
+        return {
+            "dataset": kwargs["dataset"],
+            "split": kwargs["split"],
+            "all_passed": True,
+            "modalities": {"text": {"passed": True}},
+        }
+
+    monkeypatch.setattr(cli, "read_manifest", lambda _path: make_cli_records(2))
+    monkeypatch.setattr(cli, "run_unimodal_overfit_smoke", fake_run, raising=False)
+    output = tmp_path / "reports" / "overfit.json"
+
+    result = cli.main(
+        [
+            "overfit-smoke",
+            "--manifest",
+            str(tmp_path / "manifest.jsonl"),
+            "--features",
+            str(tmp_path / "features"),
+            "--dataset",
+            "emotiontalk",
+            "--split",
+            "train",
+            "--output",
+            str(output),
+            "--device",
+            "cpu",
+        ]
+    )
+
+    assert result == 0
+    assert captured["modalities"] == ("text", "audio", "vision")
+    assert json.loads(output.read_text(encoding="utf-8"))["all_passed"] is True
+    assert json.loads(capsys.readouterr().out)["all_passed"] is True
 
 
 def test_official_emotiontalk_command_requires_published_csv_inputs():
@@ -69,6 +186,106 @@ def test_official_emotiontalk_command_requires_published_csv_inputs():
     assert args.transcriptions_csv == "transcription.csv"
 
 
+def test_asr_command_filters_dataset_split_and_writes_incrementally(
+    tmp_path, monkeypatch
+):
+    records = [
+        *make_cli_records(2, split="train"),
+        *make_cli_records(3, split="test"),
+    ]
+    captured = {}
+
+    class FakeTranscriber:
+        def __init__(self, *, device):
+            captured["device"] = device
+
+    def fake_incremental(selected, transcriber, output):
+        captured["records"] = list(selected)
+        captured["transcriber"] = transcriber
+        captured["output"] = output
+        return list(selected)
+
+    monkeypatch.setattr(cli, "read_manifest", lambda _path: records)
+    monkeypatch.setattr(cli, "FasterWhisperTranscriber", FakeTranscriber)
+    monkeypatch.setattr(
+        cli,
+        "write_asr_manifest_incrementally",
+        fake_incremental,
+        raising=False,
+    )
+
+    result = cli.main(
+        [
+            "asr-manifest",
+            "--manifest",
+            str(tmp_path / "all.jsonl"),
+            "--output",
+            str(tmp_path / "asr-test.jsonl"),
+            "--dataset",
+            "emotiontalk",
+            "--split",
+            "test",
+            "--device",
+            "cuda",
+        ]
+    )
+
+    assert result == 0
+    assert len(captured["records"]) == 3
+    assert {str(record.split) for record in captured["records"]} == {"test"}
+    assert captured["device"] == "cuda"
+    assert captured["output"] == str(tmp_path / "asr-test.jsonl")
+
+
+def test_asr_command_can_keep_original_text_and_write_error_log(
+    tmp_path, monkeypatch
+):
+    records = make_cli_records(1, split="test")
+    captured = {}
+
+    class FakeTranscriber:
+        def __init__(self, *, device):
+            captured["device"] = device
+
+    def fake_incremental(
+        selected,
+        transcriber,
+        output,
+        *,
+        keep_original_on_error,
+        error_path,
+    ):
+        captured["keep_original_on_error"] = keep_original_on_error
+        captured["error_path"] = error_path
+        return list(selected)
+
+    monkeypatch.setattr(cli, "read_manifest", lambda _path: records)
+    monkeypatch.setattr(cli, "FasterWhisperTranscriber", FakeTranscriber)
+    monkeypatch.setattr(cli, "write_asr_manifest_incrementally", fake_incremental)
+
+    error_path = tmp_path / "asr-errors.jsonl"
+    result = cli.main(
+        [
+            "asr-manifest",
+            "--manifest",
+            str(tmp_path / "all.jsonl"),
+            "--output",
+            str(tmp_path / "asr-test.jsonl"),
+            "--split",
+            "test",
+            "--device",
+            "cuda",
+            "--keep-original-on-error",
+            "--error-log",
+            str(error_path),
+        ]
+    )
+
+    assert result == 0
+    assert captured["keep_original_on_error"] is True
+    assert captured["error_path"] == str(error_path)
+
+
 def test_train_command_defaults_match_the_approved_plan():
     parser = build_parser()
     args = parser.parse_args(
@@ -84,10 +301,113 @@ def test_train_command_defaults_match_the_approved_plan():
     )
     assert args.model == "lagf"
     assert args.max_epochs == 50
+    assert args.min_epochs == 15
     assert args.patience == 7
     assert args.learning_rate == 1e-4
     assert args.weight_decay == 1e-2
     assert args.training_scope == "joint"
+    assert args.skip_test is False
+    assert args.augmentation_manifest == []
+    assert args.augmentation_features == []
+    assert args.no_quality is False
+
+
+def test_sample_corruption_manifest_parser_defaults():
+    args = build_parser().parse_args(
+        [
+            "sample-corruption-manifest",
+            "--manifest",
+            "all.jsonl",
+            "--output-manifest",
+            "selected.jsonl",
+            "--base-features",
+            "features",
+            "--output-features",
+            "selected-features",
+        ]
+    )
+
+    assert args.fraction == 0.1
+    assert args.seed == 42
+    assert args.dataset is None
+
+
+def test_sample_corruption_manifest_can_be_scoped_to_one_dataset():
+    args = build_parser().parse_args(
+        [
+            "sample-corruption-manifest",
+            "--manifest",
+            "all.jsonl",
+            "--output-manifest",
+            "selected.jsonl",
+            "--base-features",
+            "features",
+            "--output-features",
+            "selected-features",
+            "--dataset",
+            "emotiontalk",
+        ]
+    )
+
+    assert args.dataset == "emotiontalk"
+
+
+def test_attach_quality_parser_supports_resumable_shard_ranges():
+    args = build_parser().parse_args(
+        [
+            "attach-quality",
+            "--manifest",
+            "all.jsonl",
+            "--base-features",
+            "v1",
+            "--output-features",
+            "v2",
+            "--yunet-model",
+            "yunet.onnx",
+            "--dataset",
+            "meld",
+            "--split",
+            "train",
+            "--start-shard",
+            "0",
+            "--end-shard",
+            "100",
+        ]
+    )
+
+    assert args.workers == 4
+    assert (args.start_shard, args.end_shard) == (0, 100)
+
+
+def test_runtime_devices_keep_whisper_on_cpu_and_torch_extractors_on_mps():
+    torch = __import__("torch")
+    assert _runtime_devices(torch.device("mps")) == ("mps", "cpu")
+    assert _runtime_devices(torch.device("cuda")) == ("cuda", "cuda")
+    assert _runtime_devices(torch.device("cpu")) == ("cpu", "cpu")
+
+
+def test_analyze_accepts_offline_model_directories():
+    args = build_parser().parse_args(
+        [
+            "analyze",
+            "--video",
+            "demo.mp4",
+            "--checkpoint",
+            "best.pt",
+            "--yunet-model",
+            "yunet.onnx",
+            "--text-model",
+            "models/xlmr",
+            "--audio-model",
+            "models/xlsr",
+            "--whisper-model",
+            "models/whisper-small",
+        ]
+    )
+
+    assert args.text_model == "models/xlmr"
+    assert args.audio_model == "models/xlsr"
+    assert args.whisper_model == "models/whisper-small"
 
 
 def test_feature_command_accepts_pre_encoder_robustness_conditions():
@@ -109,6 +429,85 @@ def test_feature_command_accepts_pre_encoder_robustness_conditions():
     )
     assert args.audio_snr == 10.0
     assert args.frame_drop == 0.25
+
+
+def test_feature_command_accepts_single_modality_replacement():
+    args = build_parser().parse_args(
+        [
+            "extract-features",
+            "--manifest",
+            "manifest.jsonl",
+            "--features",
+            "features-snr10",
+            "--base-features",
+            "features-clean",
+            "--yunet-model",
+            "yunet.onnx",
+            "--mode",
+            "parallel",
+            "--only-modality",
+            "audio",
+            "--condition-name",
+            "audio_snr_10db",
+        ]
+    )
+
+    assert args.only_modality == "audio"
+    assert args.base_features == "features-clean"
+    assert args.condition_name == "audio_snr_10db"
+
+
+def test_evaluate_command_accepts_two_missing_modalities():
+    args = build_parser().parse_args(
+        [
+            "evaluate",
+            "--manifest",
+            "manifest.jsonl",
+            "--features",
+            "features",
+            "--checkpoint",
+            "best.pt",
+            "--output",
+            "missing-text-vision.json",
+            "--missing",
+            "text",
+            "--missing",
+            "vision",
+        ]
+    )
+
+    assert args.missing == ["text", "vision"]
+
+
+def test_evaluate_command_forwards_robustness_condition(tmp_path, monkeypatch):
+    captured = {}
+
+    def fake_evaluate(**kwargs):
+        captured.update(kwargs)
+        return tmp_path / "result.json"
+
+    monkeypatch.setattr(cli, "evaluate_checkpoint", fake_evaluate)
+
+    result = cli.main(
+        [
+            "evaluate",
+            "--manifest",
+            "asr-test.jsonl",
+            "--features",
+            "features-asr",
+            "--checkpoint",
+            "best.pt",
+            "--output",
+            str(tmp_path / "result.json"),
+            "--condition-name",
+            "whisper_text",
+            "--device",
+            "cpu",
+        ]
+    )
+
+    assert result == 0
+    assert captured["condition_name"] == "whisper_text"
 
 
 def test_parallel_feature_defaults_target_dual_t4():
@@ -393,3 +792,70 @@ def test_parallel_feature_command_routes_to_parallel_runner(tmp_path, monkeypatc
         .get_start_method()
         == "spawn"
     )
+
+
+def test_parallel_audio_replacement_does_not_require_unused_vision_gpu(
+    tmp_path, monkeypatch
+):
+    records = make_cli_records(2, split="test")
+    captured = {}
+
+    class FakeRunner:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        def run(self, selected, store):
+            captured["records"] = selected
+            captured["store"] = store
+            return []
+
+    def fake_seed(**kwargs):
+        captured.setdefault("seed_calls", []).append(kwargs)
+        return []
+
+    monkeypatch.setattr(cli, "read_manifest", lambda _path: records)
+    monkeypatch.setattr(cli.torch.cuda, "device_count", lambda: 1)
+    monkeypatch.setattr(cli, "ParallelFeatureExtractionRunner", FakeRunner)
+    monkeypatch.setattr(
+        cli, "seed_staging_from_base_shard", fake_seed, raising=False
+    )
+    result = cli.main(
+        [
+            "extract-features",
+            "--manifest",
+            str(tmp_path / "manifest.jsonl"),
+            "--features",
+            str(tmp_path / "snr10"),
+            "--base-features",
+            str(tmp_path / "clean"),
+            "--yunet-model",
+            str(tmp_path / "yunet.onnx"),
+            "--dataset",
+            "emotiontalk",
+            "--split",
+            "test",
+            "--mode",
+            "parallel",
+            "--only-modality",
+            "audio",
+            "--condition-name",
+            "audio_snr_10db",
+            "--audio-snr",
+            "10",
+        ]
+    )
+
+    assert result == 0
+    assert captured["records"] == records
+    assert captured["store"].root == tmp_path / "snr10"
+    assert len(captured["seed_calls"]) == 1
+    assert captured["seed_calls"][0]["base_store"].root == tmp_path / "clean"
+    assert captured["seed_calls"][0]["recompute_modality"] == "audio"
+    provenance_path = (
+        tmp_path / "snr10" / "emotiontalk" / "test" / "condition.json"
+    )
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    assert provenance["condition"] == "audio_snr_10db"
+    assert provenance["dataset"] == "emotiontalk"
+    assert provenance["split"] == "test"
+    assert provenance["audio_snr"] == 10.0

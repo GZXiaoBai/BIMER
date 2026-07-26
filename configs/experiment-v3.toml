@@ -1,0 +1,31 @@
+seeds = [42, 123, 2026]
+classification_losses = ["weighted_ce", "balanced_softmax", "focal"]
+gate_ranking_weights = [0.05, 0.10, 0.20]
+learning_rate = 0.0001
+corrupted_classification_weight = 0.5
+gate_ranking_margin = 0.10
+
+[defaults]
+manifest = "data/processed/v2/all.jsonl"
+features = "artifacts/features/bilingual-v2-quality"
+output = "artifacts/experiments/v3"
+device = "cuda"
+
+[budget]
+gpu_hours = 18
+preprocessing_hours = 12
+training_hours = 8
+
+[augmentations]
+manifests = [
+  "data/processed/v2/corruption-train-10pct-joint.jsonl",
+  "data/processed/v2/corruption-train-10pct-joint.jsonl",
+  "data/processed/v2/corruption-train-10pct-joint-asr.jsonl",
+]
+features = [
+  "artifacts/features/v2-corruption-joint-audio10",
+  "artifacts/features/v2-corruption-joint-video50",
+  "artifacts/features/v2-corruption-joint-whisper",
+]
+modalities = ["audio", "vision", "text"]
+severities = [10.0, 0.5, 1.0]

@@ -1,0 +1,22 @@
+# BIMER private evidence registry
+# Generated 2026-07-26 on codex/engineering-hardening
+# Paths are relative to the repository root
+385a3a38ecc9c273825b6cd72d42ef5e356af505d6572ec03f191fba2b199ab8  artifacts/analysis/v2-formal-ablations/analysis-report.md
+3149211ce3768830045f5354da11b4490c8c7f8504b3bf4a3c14e36f497bc72d  artifacts/analysis/v2-robustness/robustness-decision-report.md
+13d8f600df98a563ebd590481401d80d56646ddb9bde5a4615a51734cb6e135d  artifacts/autodl/emotiontalk-eval-features-v4/download-v1/emotiontalk-eval-features-v4.tar.gz
+3ea8034376b861ca8b730d3185ba61d7d042cc13decfcddb8ba4111d59115785  artifacts/autodl/emotiontalk-train-00480-00964/download-v1/emotiontalk-train-00480-00964.tar.gz
+e01148bfbfe11ba5bed02ac5a8d5928613a3147a38641f019b521ba4600b5697  artifacts/autodl/robustness-results-v1/download-v1/bimer-robustness-results-v1.tar.gz
+cbc5d8a23909e62cb553f01a789ebfae821aab2b869a2197035a6b56d5411e6a  artifacts/autodl/v2-quality-emotiontalk/download-v1/bimer-v2-emotiontalk-quality.tar.gz
+1f084e7ce13151920f2ae42eae13aba8f22b614790607fd15892fabb7d45f280  artifacts/autodl/v2-robustness-final/download-v1/bimer-v2-robustness.tar.gz
+787a7c91c5444d8011dbbfc653889d0ed14e9a62d86747d4edf38a9731fb4a65  artifacts/cloud-deploy/v2-formal-ablations-20260725/source-config-tests.tar.gz
+49a5497e5e527c8b5fb2a034ae2535da1139a1aaaeeece6e73327c1d0d589bf0  artifacts/cloud-deploy/v2-robustness-20260725/v2-robustness-source-tests.tar.gz
+96d9c31fcaffd2a018cef9e171a40c584424727e55ebd009db96040304de6031  artifacts/cloud-deploy/v2-robustness-prereqs-a69-20260725.tar.gz
+09de9bbc285688c882cd353074046820c035127a062b618fd5aed0e9bf36d6a0  artifacts/cloud-downloads/v2-formal-ablations/bimer-v2-formal-ablations.tar.gz
+41ebf8aa84b16fb01f17ea6bc3d26f5f14201c55d9692ba3210b241c8c9464bb  artifacts/cloud-downloads/v2-formal-ablations/extracted/artifacts/experiments/v2/formal/quality_lagf/quality_lagf/joint/seed-42/best.pt
+1b3ac7570cd617a81dd6877cbf3203fdbab8025bdc450843472c698e9ca946db  artifacts/cloud-downloads/v2-meld-quality-screen-seed42/bimer-v2-meld-quality-screen-seed42.tar.gz
+03fbc6c46f9122ee3c17e70d9bcc359e3ef3fed9bf608a554d0bc7b242edf234  artifacts/cloud-downloads/v3-loss-screen/bimer-v3-results.tar.gz
+699058738cd11695b42c9cda237cc05eb0fd5a47427f6a9a16cf6f4d7b33de70  artifacts/cloud-downloads/v3-ranking-screen/bimer-v3-results.tar.gz
+01a7b7d74df90995e8aff74621a76ab3c6942c636ca77928382c5f9423813a53  artifacts/cloud-downloads/v3-validation-views/bimer-v3-results.tar.gz
+ea1b9b6a9cde76619399f4612353c81a6a97bf5191b166451b2445cbc27d24a2  artifacts/deploy/bimer-v2-code.tar.gz
+a58031bf16520538b9bc9dbf57258f4fb78308c2b1f64f21162a05022028e15d  artifacts/deploy/bimer-v3-source-20260726.tar.gz
+9e20e6116ade785e196f00f8aceb92c3394e31597f350c23519b25523a87d89f  configs/experiment-v2-selection.json

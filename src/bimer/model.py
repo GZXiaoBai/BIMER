@@ -14,7 +14,7 @@ class FusionOutput:
 
 
 def apply_modality_dropout(mask: Tensor, probability: float) -> Tensor:
-    """Drop available modalities independently while retaining at least one."""
+    """Drop one available modality with the requested probability."""
 
     if not 0.0 <= probability <= 1.0:
         raise ValueError("probability must be between 0 and 1")
@@ -22,18 +22,20 @@ def apply_modality_dropout(mask: Tensor, probability: float) -> Tensor:
         return mask.clone()
 
     available = mask.to(dtype=torch.bool)
-    keep = torch.rand(available.shape, device=available.device) >= probability
-    dropped = available & keep
+    kept = available.clone()
     flattened_available = available.reshape(-1, available.shape[-1])
-    flattened_dropped = dropped.reshape(-1, dropped.shape[-1])
+    flattened_kept = kept.reshape(-1, kept.shape[-1])
+    selected_rows = torch.rand(
+        flattened_available.shape[0], device=available.device
+    ) < probability
     for row_index in range(flattened_available.shape[0]):
         candidates = torch.nonzero(flattened_available[row_index], as_tuple=False).flatten()
-        if candidates.numel() and not flattened_dropped[row_index].any():
+        if selected_rows[row_index] and candidates.numel() > 1:
             selected = candidates[
                 torch.randint(candidates.numel(), (1,), device=mask.device).item()
             ]
-            flattened_dropped[row_index, selected] = True
-    return dropped
+            flattened_kept[row_index, selected] = False
+    return kept
 
 
 class LanguageAwareGatedFusion(nn.Module):
@@ -56,12 +58,16 @@ class LanguageAwareGatedFusion(nn.Module):
         use_language_embedding: bool = True,
         use_reliability_gates: bool = True,
         use_context: bool = True,
+        quality_dim: int = 0,
+        use_quality_input: bool = True,
     ) -> None:
         super().__init__()
         self.modality_dropout = modality_dropout
         self.use_language_embedding = use_language_embedding
         self.use_reliability_gates = use_reliability_gates
         self.use_context = use_context
+        self.quality_dim = quality_dim
+        self.use_quality_input = use_quality_input
 
         self.text_projection = nn.Sequential(nn.Linear(text_dim, d_model), nn.LayerNorm(d_model))
         self.audio_projection = nn.Sequential(nn.Linear(audio_dim, d_model), nn.LayerNorm(d_model))
@@ -71,7 +77,7 @@ class LanguageAwareGatedFusion(nn.Module):
         self.gate_networks = nn.ModuleList(
             [
                 nn.Sequential(
-                    nn.Linear(d_model, 64),
+                    nn.Linear(d_model + quality_dim, 64),
                     nn.GELU(),
                     nn.Linear(64, 1),
                 )
@@ -88,7 +94,9 @@ class LanguageAwareGatedFusion(nn.Module):
             norm_first=False,
         )
         self.cross_modal_transformer = nn.TransformerEncoder(
-            encoder_layer, num_layers=transformer_layers
+            encoder_layer,
+            num_layers=transformer_layers,
+            enable_nested_tensor=False,
         )
         self.context = nn.GRU(
             input_size=d_model,
@@ -109,6 +117,7 @@ class LanguageAwareGatedFusion(nn.Module):
         audio_features: Tensor,
         vision_features: Tensor,
         modality_mask: Tensor,
+        modality_quality: Tensor | None = None,
         attention_mask: Tensor,
         language_ids: Tensor,
     ) -> FusionOutput:
@@ -132,6 +141,32 @@ class LanguageAwareGatedFusion(nn.Module):
             active_mask = apply_modality_dropout(active_mask, self.modality_dropout)
 
         flat_tokens = tokens.reshape(batch_size * sequence_length, 3, -1)
+        if self.quality_dim:
+            if modality_quality is None:
+                modality_quality = torch.zeros(
+                    batch_size,
+                    sequence_length,
+                    3,
+                    self.quality_dim,
+                    device=tokens.device,
+                    dtype=tokens.dtype,
+                )
+            if modality_quality.shape != (
+                batch_size,
+                sequence_length,
+                3,
+                self.quality_dim,
+            ):
+                raise ValueError(
+                    "modality_quality must have shape [batch, sequence, 3, quality_dim]"
+                )
+            flat_quality = modality_quality.to(dtype=tokens.dtype).reshape(
+                batch_size * sequence_length, 3, self.quality_dim
+            )
+            if not self.use_quality_input:
+                flat_quality = torch.zeros_like(flat_quality)
+        else:
+            flat_quality = None
         flat_mask = active_mask.reshape(batch_size * sequence_length, 3)
         utterance_is_valid = flat_mask.any(dim=-1)
         safe_mask = flat_mask.clone()
@@ -142,8 +177,16 @@ class LanguageAwareGatedFusion(nn.Module):
             src_key_padding_mask=~safe_mask,
         )
         if self.use_reliability_gates:
+            gate_inputs = [
+                (
+                    torch.cat((flat_tokens[:, index], flat_quality[:, index]), dim=-1)
+                    if flat_quality is not None
+                    else flat_tokens[:, index]
+                )
+                for index in range(3)
+            ]
             gate_logits = torch.cat(
-                [network(flat_tokens[:, index]) for index, network in enumerate(self.gate_networks)],
+                [network(gate_inputs[index]) for index, network in enumerate(self.gate_networks)],
                 dim=-1,
             )
             gate_logits = gate_logits.masked_fill(~safe_mask, torch.finfo(gate_logits.dtype).min)
@@ -180,3 +223,8 @@ class LanguageAwareGatedFusion(nn.Module):
             logits=logits,
             gates=gates.reshape(batch_size, sequence_length, 3),
         )
+
+
+class QualityAwareLanguageGatedFusion(LanguageAwareGatedFusion):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(quality_dim=4, **kwargs)

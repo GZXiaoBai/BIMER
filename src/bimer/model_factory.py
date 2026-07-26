@@ -8,7 +8,8 @@ from .baselines import (
     MajorityClassifier,
     UnimodalClassifier,
 )
-from .model import LanguageAwareGatedFusion
+from .model import LanguageAwareGatedFusion, QualityAwareLanguageGatedFusion
+from .normalization import NormalizedModel
 
 
 def build_model(
@@ -24,38 +25,45 @@ def build_model(
     use_language_embedding: bool = True,
     use_reliability_gates: bool = True,
     use_context: bool = True,
+    use_quality_input: bool = True,
     majority_class: int = 0,
+    use_input_normalization: bool = False,
 ) -> nn.Module:
     if name == "majority":
-        return MajorityClassifier(majority_class, num_classes=num_classes)
-    if name == "text":
-        return UnimodalClassifier(
+        model = MajorityClassifier(majority_class, num_classes=num_classes)
+    elif name == "text":
+        model = UnimodalClassifier(
             "text", input_dim=text_dim, hidden_dim=hidden_dim, num_classes=num_classes
         )
-    if name == "audio":
-        return UnimodalClassifier(
+    elif name == "audio":
+        model = UnimodalClassifier(
             "audio", input_dim=audio_dim, hidden_dim=hidden_dim, num_classes=num_classes
         )
-    if name == "vision":
-        return UnimodalClassifier(
+    elif name == "vision":
+        model = UnimodalClassifier(
             "vision", input_dim=vision_dim, hidden_dim=hidden_dim, num_classes=num_classes
         )
-    if name == "early_mlp":
-        return EarlyFusionMLP(
+    elif name == "early_mlp":
+        model = EarlyFusionMLP(
             (text_dim, audio_dim, vision_dim),
             hidden_dim=hidden_dim,
             num_classes=num_classes,
             dropout=dropout,
         )
-    if name == "early_context":
-        return EarlyFusionContext(
+    elif name == "early_context":
+        model = EarlyFusionContext(
             (text_dim, audio_dim, vision_dim),
             hidden_dim=max(1, hidden_dim // 2),
             num_classes=num_classes,
             dropout=dropout,
         )
-    if name == "lagf":
-        return LanguageAwareGatedFusion(
+    elif name in {"lagf", "quality_lagf"}:
+        model_class = (
+            QualityAwareLanguageGatedFusion
+            if name == "quality_lagf"
+            else LanguageAwareGatedFusion
+        )
+        model = model_class(
             text_dim=text_dim,
             audio_dim=audio_dim,
             vision_dim=vision_dim,
@@ -70,5 +78,10 @@ def build_model(
             use_language_embedding=use_language_embedding,
             use_reliability_gates=use_reliability_gates,
             use_context=use_context,
+            use_quality_input=use_quality_input,
         )
-    raise ValueError(f"Unknown model {name!r}")
+    else:
+        raise ValueError(f"Unknown model {name!r}")
+    if use_input_normalization:
+        return NormalizedModel(model, (text_dim, audio_dim, vision_dim))
+    return model

@@ -37,6 +37,7 @@ def test_build_dialogue_examples_aligns_shards_and_overlapping_windows():
     assert examples[1].sample_ids == tuple(record.sample_id for record in records[2:])
     assert examples[0].language_id == 0
     assert examples[0].labels.tolist() == [0, 1, 0]
+    assert examples[0].modality_quality.shape == (3, 3, 4)
 
 
 def test_build_dialogue_examples_rejects_missing_cached_feature():
@@ -54,4 +55,3 @@ def test_build_dialogue_examples_rejects_missing_cached_feature():
         assert "missing cached features" in str(exc)
     else:
         raise AssertionError("missing features were accepted")
-

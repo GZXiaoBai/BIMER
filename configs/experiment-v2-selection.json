@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "status": "frozen",
+  "selection_scope": "validation_only",
+  "test_set_used_for_selection": false,
+  "selected_at": "2026-07-25",
+  "selected_model": "quality_lagf",
+  "selected_learning_rate": 0.0001,
+  "screen_seed": 42,
+  "best_epoch": 8,
+  "validation_weighted_f1": {
+    "meld": 0.5843634645672062,
+    "emotiontalk": 0.6685456923980769,
+    "bilingual_average": 0.6264545784826416
+  },
+  "no_gate_comparison": {
+    "model": "lagf_no_gates",
+    "learning_rate": 0.0001,
+    "best_epoch": 8,
+    "bilingual_average": 0.6206992072889332,
+    "selected_model_delta": 0.0057553711937084
+  },
+  "formal_experiments": {
+    "seeds": [
+      42,
+      123,
+      2026
+    ],
+    "learning_rate": 0.0001,
+    "variants": [
+      "early_mlp",
+      "early_context",
+      "lagf_no_gates",
+      "quality_lagf"
+    ]
+  },
+  "ablations": [
+    "no_language",
+    "no_gates",
+    "no_context",
+    "no_quality",
+    "no_modality_dropout",
+    "no_perturbation_training"
+  ],
+  "source_archive": "artifacts/cloud-downloads/v2-meld-quality-screen-seed42/bimer-v2-meld-quality-screen-seed42.tar.gz",
+  "source_archive_sha256": "1b3ac7570cd617a81dd6877cbf3203fdbab8025bdc450843472c698e9ca946db"
+}

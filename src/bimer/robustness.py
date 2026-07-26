@@ -1,6 +1,44 @@
 from __future__ import annotations
 
+import hashlib
+import json
+from pathlib import Path
+from typing import Mapping
+
 import numpy as np
+
+
+def stable_item_seed(base_seed: int, identifier: str) -> int:
+    digest = hashlib.sha256(
+        f"{base_seed}\0{identifier}".encode("utf-8")
+    ).digest()
+    return int.from_bytes(digest[:4], "little", signed=False)
+
+
+def write_condition_provenance(
+    root: Path | str,
+    payload: Mapping[str, object],
+) -> Path:
+    path = Path(root) / "condition.json"
+    expected = {"schema_version": 1, **dict(payload)}
+    if path.is_file():
+        existing = json.loads(path.read_text(encoding="utf-8"))
+        if existing != expected:
+            raise ValueError(
+                f"{path} belongs to a different robustness condition"
+            )
+        return path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    try:
+        temporary.write_text(
+            json.dumps(expected, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return path
 
 
 def add_noise_at_snr(

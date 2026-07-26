@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import uuid
+from dataclasses import replace
 from html import escape
 from pathlib import Path
 from typing import Any, Sequence
+import time
 
 import matplotlib.pyplot as plt
 
-from .export import export_analysis_csv, export_analysis_json
+from .export import export_analysis_csv, export_analysis_figure, export_analysis_json
 from .inference import DialogueAnalyzer, TranscriptSegment
 from .schema import AnalysisResult
 
@@ -33,6 +35,10 @@ def analysis_rows(result: AnalysisResult) -> list[list[object]]:
     rows: list[list[object]] = []
     for segment in result.segments:
         confidence = max(segment.probabilities.values(), default=0.0)
+        quality_means = []
+        for name in ("text", "audio", "vision"):
+            values = list(segment.modality_quality.get(name, {}).values())
+            quality_means.append(sum(values) / len(values) if values else 0.0)
         rows.append(
             [
                 segment.start_seconds,
@@ -43,6 +49,13 @@ def analysis_rows(result: AnalysisResult) -> list[list[object]]:
                 segment.modality_gates.get("text", 0.0),
                 segment.modality_gates.get("audio", 0.0),
                 segment.modality_gates.get("vision", 0.0),
+                *[
+                    segment.modality_available.get(name, False)
+                    for name in ("text", "audio", "vision")
+                ],
+                *quality_means,
+                ", ".join(segment.quality_warnings),
+                segment.confidence_status,
             ]
         )
     return rows
@@ -74,6 +87,48 @@ def timeline_figure(result: AnalysisResult):
     axis.set_xlabel("Time (seconds)")
     axis.set_title(f"Dialogue emotion timeline · {result.language}")
     axis.set_xlim(left=0)
+    figure.tight_layout()
+    return figure
+
+
+def distribution_figure(result: AnalysisResult):
+    figure, axis = plt.subplots(figsize=(8, 3.2))
+    labels = list(_COLORS)
+    axis.bar(
+        labels,
+        [result.global_distribution[label] for label in labels],
+        color=[_COLORS[label] for label in labels],
+    )
+    axis.set_ylim(0.0, 1.0)
+    axis.set_ylabel("Mean probability")
+    axis.set_title("Global emotion distribution")
+    figure.tight_layout()
+    return figure
+
+
+def modality_quality_figure(result: AnalysisResult):
+    figure, axis = plt.subplots(figsize=(8, 3.2))
+    names = ("text", "audio", "vision")
+    gate_means = [
+        sum(segment.modality_gates.get(name, 0.0) for segment in result.segments)
+        / max(1, len(result.segments))
+        for name in names
+    ]
+    quality_means = []
+    for name in names:
+        values = [
+            value
+            for segment in result.segments
+            for value in segment.modality_quality.get(name, {}).values()
+        ]
+        quality_means.append(sum(values) / max(1, len(values)))
+    positions = list(range(3))
+    axis.bar([value - 0.18 for value in positions], gate_means, 0.36, label="gate")
+    axis.bar([value + 0.18 for value in positions], quality_means, 0.36, label="quality")
+    axis.set_xticks(positions, names)
+    axis.set_ylim(0.0, 1.0)
+    axis.set_title("Modality contribution and quality")
+    axis.legend()
     figure.tight_layout()
     return figure
 
@@ -139,16 +194,31 @@ def create_app(
             segments=segments,
         )
         run_id = uuid.uuid4().hex
-        json_path = export_analysis_json(result, export_directory / f"{run_id}.json")
+        export_started = time.perf_counter()
         csv_path = export_analysis_csv(result, export_directory / f"{run_id}.csv")
+        figure_path = export_analysis_figure(result, export_directory / f"{run_id}.png")
+        runtime_profile = dict(result.runtime_profile)
+        runtime_profile["export"] = time.perf_counter() - export_started
+        result = replace(result, runtime_profile=runtime_profile)
+        json_path = export_analysis_json(result, export_directory / f"{run_id}.json")
         return (
             analysis_rows(result),
             timeline_figure(result),
+            distribution_figure(result),
+            modality_quality_figure(result),
             timeline_html(result),
             result.to_dict(),
             str(json_path),
             str(csv_path),
+            str(figure_path),
         )
+
+    def clear_runtime_cache():
+        cache = getattr(analyzer.feature_pipeline, "cache", None)
+        if cache is None:
+            return "运行时缓存未启用"
+        count = cache.clear()
+        return f"已清除 {count} 个缓存文件"
 
     with gr.Blocks(title="BIMER 中英文多模态情感识别") as demo:
         gr.Markdown(
@@ -171,6 +241,9 @@ def create_app(
             label="可编辑转写",
         )
         analyze_button = gr.Button("2. 分析情感", variant="primary")
+        with gr.Row():
+            clear_cache_button = gr.Button("清除24小时特征缓存")
+            cache_status = gr.Textbox(label="缓存状态", interactive=False)
         analysis = gr.Dataframe(
             headers=[
                 "start_seconds",
@@ -181,16 +254,27 @@ def create_app(
                 "gate_text",
                 "gate_audio",
                 "gate_vision",
+                "available_text",
+                "available_audio",
+                "available_vision",
+                "quality_text_mean",
+                "quality_audio_mean",
+                "quality_vision_mean",
+                "quality_warnings",
+                "confidence_status",
             ],
             interactive=False,
             label="逐句结果",
         )
         timeline = gr.Plot(label="情绪时间线")
+        distribution = gr.Plot(label="全局情感分布")
+        modality_quality = gr.Plot(label="模态贡献与质量")
         clickable_timeline = gr.HTML(label="点击跳转到对应片段")
         raw_json = gr.JSON(label="结构化结果")
         with gr.Row():
             json_file = gr.File(label="JSON导出")
             csv_file = gr.File(label="CSV导出")
+            figure_file = gr.File(label="结果图导出")
 
         transcribe_button.click(
             run_transcription,
@@ -203,10 +287,14 @@ def create_app(
             outputs=[
                 analysis,
                 timeline,
+                distribution,
+                modality_quality,
                 clickable_timeline,
                 raw_json,
                 json_file,
                 csv_file,
+                figure_file,
             ],
         )
+        clear_cache_button.click(clear_runtime_cache, outputs=[cache_status])
     return demo

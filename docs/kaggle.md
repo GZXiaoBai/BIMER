@@ -14,11 +14,12 @@ EmotionTalk 整库约36.1 GB；本项目只需要其中约21.3 GB的 `Multimodal
 ```bash
 git clone <your-repository-url> /kaggle/working/bimer
 cd /kaggle/working/bimer
+python -m pip install 'transformers==4.49.0'
 pip install -e '.[inference]'
 ./scripts/download_yunet.sh /kaggle/working/yunet.onnx
 ```
 
-Kaggle通常已安装匹配CUDA的PyTorch；若版本冲突，优先保留Kaggle自带的 `torch/torchvision`，再单独安装其他依赖。
+Kaggle通常已安装匹配CUDA的PyTorch；若版本冲突，优先保留Kaggle自带的 `torch/torchvision`，再单独安装其他依赖。项目锁定 `transformers==4.49.0`，不得使用 Kaggle 镜像预装的 5.x；5.0.0 会使 XLS-R 300M 权重加载停在中途。安装后执行 `python -c "import transformers; print(transformers.__version__)"` 确认为 4.49.0。
 
 ## 3. 读取 Kaggle Secret
 
@@ -98,7 +99,7 @@ find /kaggle/working/features-emotiontalk-validation-v2/emotiontalk/validation \
   -name 'features-*.npz' | wc -l
 ```
 
-每个 staging 分片先写临时文件，通过 ID、维度和有限值校验后才原子发布。Session 中断后运行完全相同的命令即可续跑；已校验的文本、语音、视觉或最终分片不会重复计算。优化版通过32样本检查前，保留旧任务和旧特征目录，不覆盖或删除。
+每个 staging 分片先写临时文件，通过 ID、维度和有限值校验后才原子发布。同一 Session 内中断后运行完全相同的命令即可续跑；已校验的文本、语音、视觉或最终分片不会重复计算。跨 Session 前必须先将特征发布为私有 Kaggle Dataset 或下载到本地。优化版通过32样本检查前，保留旧任务和旧特征目录，不覆盖或删除。
 
 如果并行流程出现无法恢复的问题，使用原串行路径回退：
 
@@ -147,7 +148,7 @@ bimer verify-features \
   --start-shard 0 --end-shard 120 --write-completion
 ```
 
-成功后会生成 `ranges/range-00000-00120.json`。此文件存在且内容中 `is_valid=true` 后，使用 Kaggle **Quick Save** 保存版本，再进入下一段。
+成功后会生成 `ranges/range-00000-00120.json`。此文件存在且内容中 `is_valid=true` 后，将整个特征目录发布为私有 Kaggle Dataset，或压缩后下载到本地，再进入下一段。**Quick Save 不会保存** `/kaggle/working` 中的特征文件，它只能保留 Notebook 代码和页面输出，不得作为跨 Session 备份。
 
 新 Session 启动时，先从最近一次已保存的 Notebook Output 恢复同一目录：
 
@@ -156,8 +157,8 @@ from pathlib import Path
 import shutil
 
 saved = Path(
-    "/kaggle/input/notebooks/zhoujunjie2/"
-    "bimer-emotiontalk-bootstrap/features-emotiontalk-train-v4"
+    "/kaggle/input/bimer-emotiontalk-train-features/"
+    "features-emotiontalk-train-v4"
 )
 working = Path("/kaggle/working/features-emotiontalk-train-v4")
 if saved.is_dir():

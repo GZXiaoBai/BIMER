@@ -1,5 +1,7 @@
 import numpy as np
+import pytest
 
+import bimer.robustness as robustness
 from bimer.robustness import add_noise_at_snr, drop_video_frames, mask_feature_modality
 
 
@@ -25,3 +27,26 @@ def test_mask_feature_modality_clears_values_and_mask():
     cleared, updated = mask_feature_modality(feature, mask, modality_index=2)
     assert np.all(cleared == 0)
     assert updated[:, 2].tolist() == [False, False]
+
+
+def test_stable_item_seed_is_reproducible_and_item_specific():
+    first = robustness.stable_item_seed(42, "sample-a")
+
+    assert first == robustness.stable_item_seed(42, "sample-a")
+    assert first != robustness.stable_item_seed(42, "sample-b")
+
+
+def test_condition_provenance_rejects_reusing_root_for_other_condition(tmp_path):
+    payload = {
+        "condition": "audio_snr_10db",
+        "recompute_modality": "audio",
+        "audio_snr": 10.0,
+    }
+    path = robustness.write_condition_provenance(tmp_path, payload)
+
+    assert robustness.write_condition_provenance(tmp_path, payload) == path
+    with pytest.raises(ValueError, match="different robustness condition"):
+        robustness.write_condition_provenance(
+            tmp_path,
+            {**payload, "condition": "audio_snr_20db", "audio_snr": 20.0},
+        )

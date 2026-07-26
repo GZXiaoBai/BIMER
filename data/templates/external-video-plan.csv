@@ -1,0 +1,2 @@
+video_id,path,language,condition,duration_seconds
+en-normal-01,/absolute/path/to/video.mp4,en,normal_face,45

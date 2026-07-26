@@ -22,6 +22,43 @@ def test_feature_store_round_trips_without_pickle(tmp_path):
     assert loaded.sample_ids.tolist() == shard.sample_ids.tolist()
     assert loaded.vision.shape == (2, 512)
     assert loaded.modality_mask[1].tolist() == [True, True, False]
+    assert loaded.modality_quality.shape == (2, 3, 4)
+    assert not loaded.modality_quality[1, 2].any()
+
+
+def test_feature_store_preserves_explicit_modality_quality(tmp_path):
+    store = FeatureStore(tmp_path)
+    quality = np.linspace(0.0, 1.0, 24, dtype=np.float32).reshape(2, 3, 4)
+    shard = FeatureShard(
+        sample_ids=np.array(["one", "two"]),
+        text=np.ones((2, 4), dtype=np.float32),
+        audio=np.ones((2, 6), dtype=np.float32),
+        vision=np.ones((2, 5), dtype=np.float32),
+        modality_mask=np.ones((2, 3), dtype=np.bool_),
+        modality_quality=quality,
+    )
+
+    loaded = store.read(store.write("meld", "train", 0, shard))
+
+    np.testing.assert_allclose(loaded.modality_quality, quality)
+
+
+def test_feature_store_reads_legacy_shard_without_quality(tmp_path):
+    path = tmp_path / "legacy.npz"
+    np.savez_compressed(
+        path,
+        sample_ids=np.array(["one"]),
+        text=np.ones((1, 4), dtype=np.float32),
+        audio=np.ones((1, 6), dtype=np.float32),
+        vision=np.ones((1, 5), dtype=np.float32),
+        modality_mask=np.array([[1, 1, 0]], dtype=np.bool_),
+    )
+
+    loaded = FeatureStore(tmp_path).read(path)
+
+    assert loaded.modality_quality.shape == (1, 3, 4)
+    assert loaded.modality_quality[0, :2].tolist() == [[1.0] * 4, [1.0] * 4]
+    assert loaded.modality_quality[0, 2].tolist() == [0.0] * 4
 
 
 def test_feature_shard_rejects_mismatched_row_counts():
@@ -128,7 +165,7 @@ def test_dataset_feature_runner_writes_masks_for_missing_vision(tmp_path):
     runner = DatasetFeatureExtractionRunner(
         text_extractor=Text(),
         audio_extractor=Audio(),
-        waveform_loader=lambda _: np.ones(160, dtype=np.float32),
+        waveform_loader=lambda _: np.ones(400, dtype=np.float32),
         vision_loader=lambda path: (
             np.ones(5, dtype=np.float32),
             path.stem == "0",

@@ -9,11 +9,13 @@ import json
 from pathlib import Path
 import threading
 import time
+import warnings
 from typing import Callable, Iterable, Iterator, Sequence, TypeVar
 
 import numpy as np
 import torch
 
+from .feature_extractors import prepare_audio_waveforms
 from .feature_store import FeatureStore
 from .modality_store import (
     ModalityShard,
@@ -21,6 +23,7 @@ from .modality_store import (
     merge_staged_shard,
     verified_final_shard,
 )
+from .quality import audio_quality, text_quality
 from .schema import UtteranceRecord
 
 
@@ -250,6 +253,16 @@ def extract_text_stage(
                     sample_ids,
                     features,
                     np.ones(len(chunk), dtype=np.bool_),
+                    np.stack(
+                        [
+                            text_quality(
+                                record.text,
+                                source=record.text_source,
+                                asr_confidence=record.asr_confidence,
+                            )
+                            for record in chunk
+                        ]
+                    ),
                 ),
             )
         )
@@ -321,16 +334,7 @@ def extract_audio_stage(
         for shard_index, chunk, sample_ids in pending:
             waveforms = [next(decoded) for _ in chunk]
             consumed += len(chunk)
-            available = np.asarray(
-                [np.asarray(waveform).size > 0 for waveform in waveforms],
-                dtype=np.bool_,
-            )
-            safe_waveforms = [
-                np.asarray(waveform, dtype=np.float32)
-                if np.asarray(waveform).size
-                else np.zeros(160, dtype=np.float32)
-                for waveform in waveforms
-            ]
+            safe_waveforms, available = prepare_audio_waveforms(waveforms)
             features = encode_adaptive(
                 extractor,
                 safe_waveforms,
@@ -345,7 +349,12 @@ def extract_audio_stage(
                     chunk[0].dataset,
                     str(chunk[0].split),
                     shard_index,
-                    ModalityShard(sample_ids, features, available),
+                    ModalityShard(
+                        sample_ids,
+                        features,
+                        available,
+                        np.stack([audio_quality(waveform) for waveform in waveforms]),
+                    ),
                 )
             )
             _report_progress(
@@ -430,6 +439,15 @@ def extract_vision_stage(
             available = np.asarray(
                 [item[1] for item in prepared], dtype=np.bool_
             )
+            quality = np.stack(
+                [
+                    np.asarray(item[2], dtype=np.float32)
+                    if len(item) >= 3
+                    else np.full(4, float(item[1]), dtype=np.float32)
+                    for item in prepared
+                ]
+            )
+            quality[~available] = 0.0
             features = np.zeros(
                 (len(chunk), store.output_dim), dtype=np.float32
             )
@@ -450,7 +468,7 @@ def extract_vision_stage(
                     chunk[0].dataset,
                     str(chunk[0].split),
                     shard_index,
-                    ModalityShard(sample_ids, features, available),
+                    ModalityShard(sample_ids, features, available, quality),
                 )
             )
             _report_progress(
@@ -697,12 +715,23 @@ def load_waveform_worker(
     seed: int = 42,
 ) -> np.ndarray:
     from .feature_extraction_runner import load_full_waveform
-    from .robustness import add_noise_at_snr
+    from .robustness import add_noise_at_snr, stable_item_seed
 
     waveform = load_full_waveform(video_path)
     if audio_snr is not None and waveform.size:
-        waveform = add_noise_at_snr(waveform, snr_db=audio_snr, seed=seed)
+        waveform = add_noise_at_snr(
+            waveform,
+            snr_db=audio_snr,
+            seed=stable_item_seed(seed, str(video_path)),
+        )
     return waveform
+
+
+def measure_audio_quality_worker(video_path: Path) -> np.ndarray:
+    from .feature_extraction_runner import load_full_waveform
+    from .quality import audio_quality
+
+    return audio_quality(load_full_waveform(video_path))
 
 
 _VISION_FACE_CROPPER: object | None = None
@@ -725,12 +754,55 @@ def initialize_vision_worker(
 
 def prepare_video_worker(video_path: Path) -> tuple[np.ndarray, bool]:
     from .feature_extractors import prepare_video_clip
+    from .robustness import stable_item_seed
 
+    if not Path(video_path).is_file():
+        return np.zeros((16, 112, 112, 3), dtype=np.uint8), False
     if _VISION_FACE_CROPPER is None:
         raise RuntimeError("vision worker was not initialized")
-    return prepare_video_clip(
-        video_path,
-        face_cropper=_VISION_FACE_CROPPER,  # type: ignore[arg-type]
-        frame_drop_fraction=_VISION_FRAME_DROP,
-        seed=_VISION_SEED,
-    )
+    try:
+        return prepare_video_clip(
+            video_path,
+            face_cropper=_VISION_FACE_CROPPER,  # type: ignore[arg-type]
+            frame_drop_fraction=_VISION_FRAME_DROP,
+            seed=stable_item_seed(_VISION_SEED, str(video_path)),
+        )
+    except RuntimeError as error:
+        warnings.warn(
+            f"Vision unavailable for {video_path}: {error}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return np.zeros((16, 112, 112, 3), dtype=np.uint8), False
+
+
+def prepare_video_quality_worker(
+    video_path: Path,
+) -> tuple[np.ndarray, bool, np.ndarray]:
+    from .feature_extractors import prepare_video_clip_with_quality
+    from .robustness import stable_item_seed
+
+    empty = np.zeros((16, 112, 112, 3), dtype=np.uint8)
+    if not Path(video_path).is_file():
+        return empty, False, np.zeros(4, dtype=np.float32)
+    if _VISION_FACE_CROPPER is None:
+        raise RuntimeError("vision worker was not initialized")
+    try:
+        return prepare_video_clip_with_quality(
+            video_path,
+            face_cropper=_VISION_FACE_CROPPER,  # type: ignore[arg-type]
+            frame_drop_fraction=_VISION_FRAME_DROP,
+            seed=stable_item_seed(_VISION_SEED, str(video_path)),
+        )
+    except RuntimeError as error:
+        warnings.warn(
+            f"Vision unavailable for {video_path}: {error}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return empty, False, np.zeros(4, dtype=np.float32)
+
+
+def measure_video_quality_worker(video_path: Path) -> np.ndarray:
+    _, _, quality = prepare_video_quality_worker(video_path)
+    return quality

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import subprocess
+import warnings
 from pathlib import Path
 from typing import Callable, Protocol, Sequence
 
 import numpy as np
 
+from .feature_extractors import prepare_audio_waveforms
 from .feature_store import FeatureShard, FeatureStore
+from .quality import audio_quality, text_quality
 from .schema import UtteranceRecord
 
 
@@ -15,25 +18,36 @@ class BatchEncoder(Protocol):
 
 
 def load_full_waveform(video_path: Path) -> np.ndarray:
-    result = subprocess.run(
-        [
-            "ffmpeg",
-            "-v",
-            "error",
-            "-i",
-            str(video_path),
-            "-vn",
-            "-ac",
-            "1",
-            "-ar",
-            "16000",
-            "-f",
-            "f32le",
-            "-",
-        ],
-        check=True,
-        capture_output=True,
-    )
+    path = Path(video_path)
+    if not path.is_file():
+        return np.empty(0, dtype=np.float32)
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-i",
+                str(path),
+                "-vn",
+                "-ac",
+                "1",
+                "-ar",
+                "16000",
+                "-f",
+                "f32le",
+                "-",
+            ],
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as error:
+        warnings.warn(
+            f"Audio unavailable for {path}: ffmpeg exited {error.returncode}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return np.empty(0, dtype=np.float32)
     return np.frombuffer(result.stdout, dtype=np.float32).copy()
 
 
@@ -44,7 +58,10 @@ class DatasetFeatureExtractionRunner:
         text_extractor: BatchEncoder,
         audio_extractor: BatchEncoder,
         waveform_loader: Callable[[Path], np.ndarray] = load_full_waveform,
-        vision_loader: Callable[[Path], tuple[np.ndarray, bool]],
+        vision_loader: Callable[
+            [Path],
+            tuple[np.ndarray, bool] | tuple[np.ndarray, bool, np.ndarray],
+        ],
     ) -> None:
         self.text_extractor = text_extractor
         self.audio_extractor = audio_extractor
@@ -91,21 +108,25 @@ class DatasetFeatureExtractionRunner:
 
             text = self.text_extractor.encode([record.text for record in chunk])
             waveforms = [self.waveform_loader(path) for path in video_paths]
-            audio_available = np.asarray([waveform.size > 0 for waveform in waveforms])
-            safe_waveforms = [
-                waveform if waveform.size else np.zeros(160, dtype=np.float32)
-                for waveform in waveforms
-            ]
+            safe_waveforms, audio_available = prepare_audio_waveforms(waveforms)
             audio = self.audio_extractor.encode(safe_waveforms)
             vision_features: list[np.ndarray] = []
             vision_available: list[bool] = []
+            vision_quality_rows: list[np.ndarray] = []
             for path in video_paths:
-                feature, available = self.vision_loader(path)
+                vision_result = self.vision_loader(path)
+                feature, available = vision_result[:2]
+                quality = (
+                    np.asarray(vision_result[2], dtype=np.float32)
+                    if len(vision_result) == 3
+                    else np.full(4, float(available), dtype=np.float32)
+                )
                 flattened = np.asarray(feature, dtype=np.float32).reshape(-1)
                 if not available:
                     flattened = np.zeros_like(flattened)
                 vision_features.append(flattened)
                 vision_available.append(available)
+                vision_quality_rows.append(quality)
             vision = np.stack(vision_features)
             modality_mask = np.stack(
                 (
@@ -115,12 +136,30 @@ class DatasetFeatureExtractionRunner:
                 ),
                 axis=-1,
             )
+            modality_quality = np.stack(
+                (
+                    np.stack(
+                        [
+                            text_quality(
+                                record.text,
+                                source=record.text_source,
+                                asr_confidence=record.asr_confidence,
+                            )
+                            for record in chunk
+                        ]
+                    ),
+                    np.stack([audio_quality(waveform) for waveform in waveforms]),
+                    np.stack(vision_quality_rows),
+                ),
+                axis=1,
+            ).astype(np.float32)
             shard = FeatureShard(
                 sample_ids=expected_sample_ids,
                 text=np.asarray(text, dtype=np.float32),
                 audio=np.asarray(audio, dtype=np.float32),
                 vision=vision,
                 modality_mask=modality_mask,
+                modality_quality=modality_quality,
             )
             written.append(store.write(dataset, split, shard_index, shard))
         return written

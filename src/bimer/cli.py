@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 import json
 import multiprocessing
 from pathlib import Path
+import warnings
+import time
 
 import torch
 
 from .app import create_app
-from .asr_manifest import replace_text_with_asr
+from .asr_manifest import write_asr_manifest_incrementally
 from .data_adapters import (
     check_official_split_counts,
     count_records,
@@ -18,8 +21,12 @@ from .data_adapters import (
     load_emotiontalk_manifest,
     load_meld_csv,
 )
+from .corruption_sampling import (
+    materialize_feature_subset,
+    select_stratified_context_records,
+)
 from .experiment import ExperimentConfig, evaluate_checkpoint, resolve_device, run_experiment
-from .export import export_analysis_csv, export_analysis_json
+from .export import export_analysis_csv, export_analysis_figure, export_analysis_json
 from .feature_extraction_runner import DatasetFeatureExtractionRunner, load_full_waveform
 from .feature_extractors import (
     AudioFeatureExtractor,
@@ -28,6 +35,8 @@ from .feature_extractors import (
     YuNetFaceCropper,
 )
 from .feature_store import FeatureStore
+from .modality_store import seed_staging_from_base_shard
+from .feature_statistics import compute_feature_statistics, write_feature_statistics
 from .feature_verification import verify_feature_range, write_range_completion
 from .inference import (
     DialogueAnalyzer,
@@ -36,16 +45,24 @@ from .inference import (
 )
 from .manifest import read_manifest, write_manifest
 from .model_factory import build_model
+from .overfit_smoke import run_unimodal_overfit_smoke, write_overfit_smoke
+from .quality_attachment import QualityAttachmentRunner
 from .parallel_feature_extraction import (
     ParallelFeatureExtractionConfig,
     ParallelFeatureExtractionRunner,
     initialize_vision_worker,
     load_waveform_worker,
+    measure_audio_quality_worker,
+    measure_video_quality_worker,
+    prepare_video_quality_worker,
     prepare_video_worker,
+    record_shards,
 )
-from .robustness import add_noise_at_snr
+from .robustness import add_noise_at_snr, write_condition_provenance
 from .shard_ranges import slice_shard_range
 from .validation import validate_dataset_records
+from .runtime_cache import RuntimeFeatureCache
+from .calibration import CalibrationProfile
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -80,7 +97,13 @@ def build_parser() -> argparse.ArgumentParser:
     asr_manifest = commands.add_parser("asr-manifest")
     asr_manifest.add_argument("--manifest", required=True)
     asr_manifest.add_argument("--output", required=True)
+    asr_manifest.add_argument(
+        "--dataset", choices=["meld", "emotiontalk"]
+    )
+    asr_manifest.add_argument("--split")
     asr_manifest.add_argument("--device", default="cpu")
+    asr_manifest.add_argument("--keep-original-on-error", action="store_true")
+    asr_manifest.add_argument("--error-log")
 
     validate = commands.add_parser("validate")
     validate.add_argument("--manifest", required=True)
@@ -98,9 +121,38 @@ def build_parser() -> argparse.ArgumentParser:
     verify_features.add_argument("--end-shard", type=int)
     verify_features.add_argument("--write-completion", action="store_true")
 
+    feature_stats = commands.add_parser("feature-stats")
+    feature_stats.add_argument("--manifest", required=True)
+    feature_stats.add_argument("--features", required=True)
+    feature_stats.add_argument(
+        "--dataset", choices=["meld", "emotiontalk"], required=True
+    )
+    feature_stats.add_argument("--split", required=True)
+    feature_stats.add_argument("--output", required=True)
+
+    overfit_smoke = commands.add_parser("overfit-smoke")
+    overfit_smoke.add_argument("--manifest", required=True)
+    overfit_smoke.add_argument("--features", required=True)
+    overfit_smoke.add_argument(
+        "--dataset", choices=["meld", "emotiontalk"], required=True
+    )
+    overfit_smoke.add_argument("--split", required=True)
+    overfit_smoke.add_argument("--output", required=True)
+    overfit_smoke.add_argument(
+        "--modality", choices=["text", "audio", "vision"], action="append"
+    )
+    overfit_smoke.add_argument("--sample-count", type=int, default=16)
+    overfit_smoke.add_argument("--max-epochs", type=int, default=200)
+    overfit_smoke.add_argument("--learning-rate", type=float, default=1e-2)
+    overfit_smoke.add_argument("--target-accuracy", type=float, default=0.95)
+    overfit_smoke.add_argument("--hidden-dim", type=int, default=64)
+    overfit_smoke.add_argument("--seed", type=int, default=42)
+    overfit_smoke.add_argument("--device", default="auto")
+
     extract = commands.add_parser("extract-features")
     extract.add_argument("--manifest", required=True)
     extract.add_argument("--features", required=True)
+    extract.add_argument("--base-features")
     extract.add_argument("--yunet-model", required=True)
     extract.add_argument("--dataset", choices=["meld", "emotiontalk"])
     extract.add_argument("--split")
@@ -120,6 +172,10 @@ def build_parser() -> argparse.ArgumentParser:
     extract.add_argument("--vision-workers", type=int, default=4)
     extract.add_argument("--queue-capacity", type=int, default=8)
     extract.add_argument("--staging")
+    extract.add_argument(
+        "--only-modality", choices=["text", "audio", "vision"]
+    )
+    extract.add_argument("--condition-name")
     extract.add_argument("--start-shard", type=int)
     extract.add_argument("--end-shard", type=int)
 
@@ -129,12 +185,16 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--output", required=True)
     train.add_argument(
         "--model",
-        choices=["majority", "text", "audio", "vision", "early_mlp", "early_context", "lagf"],
+        choices=[
+            "majority", "text", "audio", "vision", "early_mlp",
+            "early_context", "lagf", "quality_lagf",
+        ],
         default="lagf",
     )
     train.add_argument("--seed", type=int, default=42)
     train.add_argument("--batch-size", type=int, default=8)
     train.add_argument("--max-epochs", type=int, default=50)
+    train.add_argument("--min-epochs", type=int, default=15)
     train.add_argument("--patience", type=int, default=7)
     train.add_argument("--learning-rate", type=float, default=1e-4)
     train.add_argument("--weight-decay", type=float, default=1e-2)
@@ -147,14 +207,91 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--no-language", action="store_true")
     train.add_argument("--no-gates", action="store_true")
     train.add_argument("--no-context", action="store_true")
+    train.add_argument("--no-quality", action="store_true")
     train.add_argument("--no-modality-dropout", action="store_true")
+    train.add_argument("--augmentation-manifest", action="append", default=[])
+    train.add_argument("--augmentation-features", action="append", default=[])
+    train.add_argument(
+        "--augmentation-modality",
+        action="append",
+        choices=["text", "audio", "vision"],
+        default=[],
+    )
+    train.add_argument(
+        "--augmentation-severity",
+        action="append",
+        type=float,
+        default=[],
+    )
+    train.add_argument(
+        "--classification-loss",
+        choices=["weighted_ce", "balanced_softmax", "focal"],
+        default="weighted_ce",
+    )
+    train.add_argument("--focal-gamma", type=float, default=2.0)
+    train.add_argument("--corrupted-classification-weight", type=float, default=0.5)
+    train.add_argument("--gate-ranking-weight", type=float, default=0.0)
+    train.add_argument("--gate-ranking-margin", type=float, default=0.10)
+    train.add_argument(
+        "--v3-screen",
+        action="store_true",
+        help="seed-42 validation screening; requires --skip-test",
+    )
+    train.add_argument(
+        "--v3-formal",
+        action="store_true",
+        help="frozen V3 formal training; test evaluation remains a separate guarded stage",
+    )
+    train.add_argument(
+        "--skip-test",
+        action="store_true",
+        help="validation-only run for model selection; never load or evaluate test splits",
+    )
+
+    corruption = commands.add_parser("sample-corruption-manifest")
+    corruption.add_argument("--manifest", required=True)
+    corruption.add_argument("--output-manifest", required=True)
+    corruption.add_argument("--base-features", required=True)
+    corruption.add_argument("--output-features", required=True)
+    corruption.add_argument("--fraction", type=float, default=0.1)
+    corruption.add_argument("--seed", type=int, default=42)
+    corruption.add_argument("--shard-size", type=int, default=1024)
+    corruption.add_argument(
+        "--dataset",
+        choices=["meld", "emotiontalk"],
+        help="optionally build a dataset-local corruption subset",
+    )
+
+    attach_quality = commands.add_parser("attach-quality")
+    attach_quality.add_argument("--manifest", required=True)
+    attach_quality.add_argument("--base-features", required=True)
+    attach_quality.add_argument("--output-features", required=True)
+    attach_quality.add_argument("--yunet-model", required=True)
+    attach_quality.add_argument(
+        "--dataset", choices=["meld", "emotiontalk"], required=True
+    )
+    attach_quality.add_argument("--split", required=True)
+    attach_quality.add_argument("--workers", type=int, default=4)
+    attach_quality.add_argument("--queue-capacity", type=int, default=8)
+    attach_quality.add_argument("--start-shard", type=int)
+    attach_quality.add_argument("--end-shard", type=int)
 
     evaluate = commands.add_parser("evaluate")
     evaluate.add_argument("--manifest", required=True)
     evaluate.add_argument("--features", required=True)
     evaluate.add_argument("--checkpoint", required=True)
     evaluate.add_argument("--output", required=True)
-    evaluate.add_argument("--missing", choices=["text", "audio", "vision"])
+    evaluate.add_argument(
+        "--missing",
+        choices=["text", "audio", "vision"],
+        action="append",
+    )
+    evaluate.add_argument("--condition-name")
+    evaluate.add_argument(
+        "--role",
+        choices=["validation", "test"],
+        default="test",
+    )
     evaluate.add_argument("--device", default="auto")
 
     analyze = commands.add_parser("analyze")
@@ -164,16 +301,46 @@ def build_parser() -> argparse.ArgumentParser:
     analyze.add_argument("--language", choices=["auto", "zh", "en"], default="auto")
     analyze.add_argument("--output", default="artifacts/exports")
     analyze.add_argument("--device", default="auto")
+    analyze.add_argument("--text-model", default="xlm-roberta-base")
+    analyze.add_argument("--audio-model", default="facebook/wav2vec2-xls-r-300m")
+    analyze.add_argument("--whisper-model", default="small")
+    analyze.add_argument("--calibration")
+    analyze.add_argument("--cache-dir", default="artifacts/runtime-cache")
+    analyze.add_argument("--model-version", default="auto")
 
     serve = commands.add_parser("serve")
     serve.add_argument("--checkpoint", required=True)
     serve.add_argument("--yunet-model", required=True)
     serve.add_argument("--device", default="auto")
+    serve.add_argument("--text-model", default="xlm-roberta-base")
+    serve.add_argument("--audio-model", default="facebook/wav2vec2-xls-r-300m")
+    serve.add_argument("--whisper-model", default="small")
+    serve.add_argument("--calibration")
+    serve.add_argument("--cache-dir", default="artifacts/runtime-cache")
+    serve.add_argument("--model-version", default="auto")
     serve.add_argument("--share", action="store_true")
     return parser
 
 
-def _runtime_analyzer(checkpoint_path: str, yunet_model: str, device_name: str) -> DialogueAnalyzer:
+def _runtime_devices(device: torch.device) -> tuple[str, str]:
+    if device.type == "cuda":
+        return "cuda", "cuda"
+    if device.type == "mps":
+        return "mps", "cpu"
+    return "cpu", "cpu"
+
+
+def _runtime_analyzer(
+    checkpoint_path: str,
+    yunet_model: str,
+    device_name: str,
+    text_model: str = "xlm-roberta-base",
+    audio_model: str = "facebook/wav2vec2-xls-r-300m",
+    whisper_model: str = "small",
+    calibration_path: str | None = None,
+    cache_directory: str = "artifacts/runtime-cache",
+    model_version: str = "auto",
+) -> DialogueAnalyzer:
     device = resolve_device(device_name)
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     model_config = checkpoint.get("metadata", {}).get("model_config")
@@ -181,24 +348,122 @@ def _runtime_analyzer(checkpoint_path: str, yunet_model: str, device_name: str) 
         raise ValueError("checkpoint does not contain model_config metadata")
     model = build_model(**model_config)
     model.load_state_dict(checkpoint["model_state_dict"])
-    extractor_device = "cuda" if device.type == "cuda" else "cpu"
+    extractor_device, whisper_device = _runtime_devices(device)
     face_cropper = YuNetFaceCropper(yunet_model)
-    pipeline = PretrainedFeaturePipeline(
-        text_extractor=TextFeatureExtractor(device=extractor_device),
-        audio_extractor=AudioFeatureExtractor(device=extractor_device),
-        vision_extractor=VisionFeatureExtractor(device=extractor_device),
-        face_cropper=face_cropper,
-    )
+    cache = RuntimeFeatureCache(cache_directory)
+    encoder_versions = {
+        "text": text_model,
+        "audio": audio_model,
+        "vision": "r3d18-yunet-v2",
+    }
+    if model_version == "auto":
+        experiment = checkpoint.get("metadata", {}).get("experiment", {})
+        if experiment.get("protocol_stage") == "v3_formal":
+            model_version = (
+                "v3_ranked"
+                if float(experiment.get("gate_ranking_weight", 0.0)) > 0
+                else "v3_loss_only"
+            )
+        else:
+            model_version = "v2_quality_lagf"
+    try:
+        pipeline = PretrainedFeaturePipeline(
+            text_extractor=TextFeatureExtractor(text_model, device=extractor_device),
+            audio_extractor=AudioFeatureExtractor(audio_model, device=extractor_device),
+            vision_extractor=VisionFeatureExtractor(device=extractor_device),
+            face_cropper=face_cropper,
+            cache=cache,
+            encoder_versions=encoder_versions,
+        )
+    except (RuntimeError, NotImplementedError) as exc:
+        if extractor_device != "mps":
+            raise
+        warnings.warn(
+            f"MPS feature extraction unavailable; falling back to CPU: {exc}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        pipeline = PretrainedFeaturePipeline(
+            text_extractor=TextFeatureExtractor(text_model, device="cpu"),
+            audio_extractor=AudioFeatureExtractor(audio_model, device="cpu"),
+            vision_extractor=VisionFeatureExtractor(device="cpu"),
+            face_cropper=face_cropper,
+            cache=cache,
+            encoder_versions=encoder_versions,
+        )
     return DialogueAnalyzer(
-        transcriber=FasterWhisperTranscriber(device=extractor_device),
+        transcriber=FasterWhisperTranscriber(whisper_model, device=whisper_device),
         feature_pipeline=pipeline,
         model=model,
         device=device,
+        calibration_profile=(
+            CalibrationProfile.load(calibration_path)
+            if calibration_path
+            else None
+        ),
+        model_version=model_version,
     )
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.command == "sample-corruption-manifest":
+        training_records = [
+            record
+            for record in read_manifest(args.manifest)
+            if str(record.split) == "train"
+            and (args.dataset is None or record.dataset == args.dataset)
+        ]
+        selected = select_stratified_context_records(
+            training_records,
+            fraction=args.fraction,
+            seed=args.seed,
+        )
+        write_manifest(selected, args.output_manifest)
+        materialize_feature_subset(
+            selected,
+            FeatureStore(args.base_features),
+            FeatureStore(args.output_features),
+            shard_size=args.shard_size,
+        )
+        print(args.output_manifest)
+        return 0
+
+    if args.command == "attach-quality":
+        if (args.start_shard is None) != (args.end_shard is None):
+            raise ValueError("start-shard and end-shard must be supplied together")
+        records = [
+            record
+            for record in read_manifest(args.manifest)
+            if record.dataset == args.dataset and str(record.split) == args.split
+        ]
+        spawn_context = multiprocessing.get_context("spawn")
+        runner = QualityAttachmentRunner(
+            audio_quality_loader=measure_audio_quality_worker,
+            vision_quality_loader=measure_video_quality_worker,
+            audio_executor_factory=partial(
+                ProcessPoolExecutor,
+                mp_context=spawn_context,
+            ),
+            vision_executor_factory=partial(
+                ProcessPoolExecutor,
+                initializer=initialize_vision_worker,
+                initargs=(Path(args.yunet_model), 0.0, 42),
+                mp_context=spawn_context,
+            ),
+            workers=args.workers,
+            queue_capacity=args.queue_capacity,
+        )
+        written = runner.run(
+            records,
+            FeatureStore(args.base_features),
+            FeatureStore(args.output_features),
+            start_shard=args.start_shard,
+            end_shard=args.end_shard,
+        )
+        print(f"quality shards: {len(written)}")
+        return 0
     if args.command == "prepare-meld":
         records = []
         for split, csv_path, media_root in (
@@ -240,8 +505,24 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "asr-manifest":
         transcriber = FasterWhisperTranscriber(device=args.device)
-        records = replace_text_with_asr(read_manifest(args.manifest), transcriber)
-        write_manifest(records, args.output)
+        records = [
+            record
+            for record in read_manifest(args.manifest)
+            if (not args.dataset or record.dataset == args.dataset)
+            and (not args.split or str(record.split) == args.split)
+        ]
+        error_options = {}
+        if args.keep_original_on_error:
+            error_options = {
+                "keep_original_on_error": True,
+                "error_path": args.error_log,
+            }
+        write_asr_manifest_incrementally(
+            records,
+            transcriber,
+            args.output,
+            **error_options,
+        )
         return 0
 
     if args.command == "validate":
@@ -287,7 +568,51 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
         return 0
 
+    if args.command == "feature-stats":
+        report = compute_feature_statistics(
+            read_manifest(args.manifest),
+            FeatureStore(args.features),
+            dataset=args.dataset,
+            split=args.split,
+        )
+        write_feature_statistics(report, args.output)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
+
+    if args.command == "overfit-smoke":
+        report = run_unimodal_overfit_smoke(
+            read_manifest(args.manifest),
+            FeatureStore(args.features),
+            dataset=args.dataset,
+            split=args.split,
+            modalities=tuple(args.modality or ("text", "audio", "vision")),
+            sample_count=args.sample_count,
+            max_epochs=args.max_epochs,
+            learning_rate=args.learning_rate,
+            target_accuracy=args.target_accuracy,
+            hidden_dim=args.hidden_dim,
+            seed=args.seed,
+            device=resolve_device(args.device),
+        )
+        write_overfit_smoke(report, args.output)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0 if report["all_passed"] else 1
+
     if args.command == "extract-features":
+        if bool(args.only_modality) != bool(args.base_features):
+            raise ValueError(
+                "only-modality and base-features must be supplied together"
+            )
+        if bool(args.condition_name) != bool(args.only_modality):
+            raise ValueError(
+                "condition-name is required for single-modality replacement"
+            )
+        if args.only_modality and args.mode != "parallel":
+            raise ValueError("single-modality replacement requires parallel mode")
+        if args.base_features and Path(args.base_features).resolve() == Path(
+            args.features
+        ).resolve():
+            raise ValueError("base-features and features must be different roots")
         range_requested = (
             args.start_shard is not None or args.end_shard is not None
         )
@@ -310,7 +635,12 @@ def main(argv: list[str] | None = None) -> int:
         ]
         if args.mode == "parallel":
             requested_cuda_indices = []
-            for device_name in (args.text_audio_device, args.vision_device):
+            requested_devices = []
+            if args.only_modality in (None, "text", "audio"):
+                requested_devices.append(args.text_audio_device)
+            if args.only_modality in (None, "vision"):
+                requested_devices.append(args.vision_device)
+            for device_name in requested_devices:
                 if device_name.startswith("cuda:"):
                     requested_cuda_indices.append(int(device_name.split(":", 1)[1]))
             if requested_cuda_indices and torch.cuda.device_count() <= max(
@@ -332,6 +662,9 @@ def main(argv: list[str] | None = None) -> int:
                 mp_context=spawn_context,
             )
             final_store = FeatureStore(args.features)
+            base_store = (
+                FeatureStore(args.base_features) if args.base_features else None
+            )
             for dataset in sorted({record.dataset for record in records}):
                 for split in sorted(
                     {
@@ -346,6 +679,23 @@ def main(argv: list[str] | None = None) -> int:
                         if record.dataset == dataset
                         and str(record.split) == split
                     ]
+                    if args.only_modality:
+                        write_condition_provenance(
+                            Path(args.features) / dataset / split,
+                            {
+                                "condition": args.condition_name,
+                                "recompute_modality": args.only_modality,
+                                "manifest": str(Path(args.manifest).resolve()),
+                                "base_features": str(
+                                    Path(args.base_features).resolve()
+                                ),
+                                "dataset": dataset,
+                                "split": split,
+                                "audio_snr": args.audio_snr,
+                                "frame_drop": args.frame_drop,
+                                "perturbation_seed": 42,
+                            },
+                        )
                     selected, resolved = slice_shard_range(
                         group,
                         args.shard_size,
@@ -362,8 +712,24 @@ def main(argv: list[str] | None = None) -> int:
                         queue_capacity=args.queue_capacity,
                         shard_index_offset=resolved.start,
                     )
+                    staging_root = Path(args.staging or args.features)
+                    if base_store is not None:
+                        for shard_index, _, sample_ids in record_shards(
+                            selected,
+                            args.shard_size,
+                            resolved.start,
+                        ):
+                            seed_staging_from_base_shard(
+                                base_store=base_store,
+                                staging_root=staging_root,
+                                dataset=dataset,
+                                split=split,
+                                shard_index=shard_index,
+                                expected_sample_ids=sample_ids,
+                                recompute_modality=args.only_modality,
+                            )
                     runner = ParallelFeatureExtractionRunner(
-                        staging_root=Path(args.staging or args.features),
+                        staging_root=staging_root,
                         config=config,
                         text_extractor_factory=lambda: TextFeatureExtractor(
                             device=args.text_audio_device
@@ -379,7 +745,7 @@ def main(argv: list[str] | None = None) -> int:
                             audio_snr=args.audio_snr,
                             seed=42,
                         ),
-                        prepared_loader=prepare_video_worker,
+                        prepared_loader=prepare_video_quality_worker,
                         audio_executor_factory=audio_executor_factory,
                         vision_executor_factory=vision_executor_factory,
                     )
@@ -403,7 +769,7 @@ def main(argv: list[str] | None = None) -> int:
             text_extractor=text,
             audio_extractor=audio,
             waveform_loader=waveform_loader,
-            vision_loader=lambda path: vision.encode_video(
+            vision_loader=lambda path: vision.encode_video_with_quality(
                 path,
                 face_cropper=cropper,
                 frame_drop_fraction=args.frame_drop,
@@ -420,6 +786,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "train":
+        if args.v3_screen and args.v3_formal:
+            raise ValueError("v3-screen and v3-formal are mutually exclusive")
         result = run_experiment(
             manifest_path=args.manifest,
             feature_root=args.features,
@@ -429,14 +797,31 @@ def main(argv: list[str] | None = None) -> int:
                 seed=args.seed,
                 batch_size=args.batch_size,
                 max_epochs=args.max_epochs,
+                min_epochs=args.min_epochs,
                 patience=args.patience,
                 learning_rate=args.learning_rate,
                 weight_decay=args.weight_decay,
                 use_language_embedding=not args.no_language,
                 use_reliability_gates=not args.no_gates,
                 use_context=not args.no_context,
+                use_quality_input=not args.no_quality,
                 modality_dropout=0.0 if args.no_modality_dropout else 0.2,
                 training_scope=args.training_scope,
+                evaluate_test=not args.skip_test,
+                augmentation_manifests=tuple(args.augmentation_manifest),
+                augmentation_feature_roots=tuple(args.augmentation_features),
+                classification_loss=args.classification_loss,
+                focal_gamma=args.focal_gamma,
+                augmentation_modalities=tuple(args.augmentation_modality),
+                augmentation_severities=tuple(args.augmentation_severity),
+                corrupted_classification_weight=args.corrupted_classification_weight,
+                gate_ranking_weight=args.gate_ranking_weight,
+                gate_ranking_margin=args.gate_ranking_margin,
+                protocol_stage=(
+                    "v3_screen"
+                    if args.v3_screen
+                    else ("v3_formal" if args.v3_formal else "standard")
+                ),
             ),
             device_name=args.device,
         )
@@ -450,17 +835,34 @@ def main(argv: list[str] | None = None) -> int:
             checkpoint_path=args.checkpoint,
             output_path=args.output,
             missing_modality=args.missing,
+            condition_name=args.condition_name,
             device_name=args.device,
+            evaluation_role=args.role,
         )
         print(result)
         return 0
 
-    analyzer = _runtime_analyzer(args.checkpoint, args.yunet_model, args.device)
+    analyzer = _runtime_analyzer(
+        args.checkpoint,
+        args.yunet_model,
+        args.device,
+        args.text_model,
+        args.audio_model,
+        args.whisper_model,
+        args.calibration,
+        args.cache_dir,
+        args.model_version,
+    )
     if args.command == "analyze":
         result = analyzer.analyze(Path(args.video), args.language)
         output = Path(args.output)
-        export_analysis_json(result, output / "analysis.json")
+        export_started = time.perf_counter()
         export_analysis_csv(result, output / "analysis.csv")
+        export_analysis_figure(result, output / "analysis.png")
+        runtime_profile = dict(result.runtime_profile)
+        runtime_profile["export"] = time.perf_counter() - export_started
+        result = replace(result, runtime_profile=runtime_profile)
+        export_analysis_json(result, output / "analysis.json")
         print(output / "analysis.json")
         return 0
     if args.command == "serve":

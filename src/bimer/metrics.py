@@ -52,3 +52,76 @@ def bootstrap_weighted_f1(
     low, high = np.quantile(scores, [0.025, 0.975])
     return float(low), float(high)
 
+
+def _cluster_bootstrap_indices(
+    cluster_ids: np.ndarray,
+    *,
+    iterations: int,
+    seed: int,
+):
+    clusters = np.asarray(cluster_ids).astype(str)
+    unique = np.unique(clusters)
+    if not len(unique):
+        raise ValueError("cluster_ids must not be empty")
+    members = [np.flatnonzero(clusters == cluster) for cluster in unique]
+    generator = np.random.default_rng(seed)
+    for _ in range(iterations):
+        selected = generator.integers(0, len(unique), size=len(unique))
+        yield np.concatenate([members[index] for index in selected])
+
+
+def cluster_bootstrap_weighted_f1(
+    truth: np.ndarray,
+    prediction: np.ndarray,
+    cluster_ids: np.ndarray,
+    *,
+    iterations: int = 2000,
+    seed: int = 42,
+) -> tuple[float, float]:
+    if len(truth) != len(prediction) or len(truth) != len(cluster_ids) or len(truth) == 0:
+        raise ValueError("truth, prediction, and cluster_ids must have equal non-zero length")
+    scores = np.asarray(
+        [
+            f1_score(
+                truth[sample],
+                prediction[sample],
+                average="weighted",
+                zero_division=0,
+            )
+            for sample in _cluster_bootstrap_indices(
+                cluster_ids, iterations=iterations, seed=seed
+            )
+        ],
+        dtype=np.float64,
+    )
+    low, high = np.quantile(scores, [0.025, 0.975])
+    return float(low), float(high)
+
+
+def paired_cluster_bootstrap_weighted_f1_delta(
+    truth: np.ndarray,
+    baseline_prediction: np.ndarray,
+    candidate_prediction: np.ndarray,
+    cluster_ids: np.ndarray,
+    *,
+    iterations: int = 2000,
+    seed: int = 42,
+) -> tuple[float, float]:
+    lengths = {
+        len(truth), len(baseline_prediction), len(candidate_prediction), len(cluster_ids)
+    }
+    if len(lengths) != 1 or not len(truth):
+        raise ValueError("paired bootstrap arrays must have equal non-zero length")
+    deltas = []
+    for sample in _cluster_bootstrap_indices(
+        cluster_ids, iterations=iterations, seed=seed
+    ):
+        baseline = f1_score(
+            truth[sample], baseline_prediction[sample], average="weighted", zero_division=0
+        )
+        candidate = f1_score(
+            truth[sample], candidate_prediction[sample], average="weighted", zero_division=0
+        )
+        deltas.append(candidate - baseline)
+    low, high = np.quantile(np.asarray(deltas, dtype=np.float64), [0.025, 0.975])
+    return float(low), float(high)

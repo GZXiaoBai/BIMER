@@ -1,0 +1,21 @@
+seeds = [42, 123, 2026]
+audio_learning_rates = [0.0003, 0.001, 0.003]
+fusion_learning_rates = [0.0001, 0.0003, 0.001]
+formal_learning_rate = 0.0001
+
+[defaults]
+manifest = "data/processed/v2/all.jsonl"
+features = "artifacts/features/bilingual-v1"
+output = "artifacts/experiments/v2"
+device = "auto"
+
+[formal]
+variants = ["early_mlp", "early_context", "lagf_no_gates", "quality_lagf"]
+
+[ablations]
+no_language = ["--no-language"]
+no_gates = ["--no-gates"]
+no_context = ["--no-context"]
+no_quality = ["--no-quality"]
+no_modality_dropout = ["--no-modality-dropout"]
+no_perturbation_training = []

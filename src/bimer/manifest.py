@@ -8,16 +8,20 @@ from .schema import UtteranceRecord
 
 
 def write_manifest(
-    records: Iterable[UtteranceRecord], output_path: Path | str
+    records: Iterable[UtteranceRecord],
+    output_path: Path | str,
+    *,
+    append: bool = False,
 ) -> Path:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
+    with path.open("a" if append else "w", encoding="utf-8") as handle:
         for record in records:
             payload = {
                 "dataset": record.dataset,
                 "split": record.split,
                 "dialogue_id": record.dialogue_id,
+                "context_id": record.context_id,
                 "utterance_id": record.utterance_id,
                 "text": record.text,
                 "emotion": record.emotion,
@@ -27,6 +31,8 @@ def write_manifest(
                 "speaker_id": record.speaker_id,
                 "video_path": str(record.video_path) if record.video_path else None,
                 "audio_path": str(record.audio_path) if record.audio_path else None,
+                "text_source": record.text_source,
+                "asr_confidence": record.asr_confidence,
             }
             handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
     return path
@@ -44,4 +50,3 @@ def read_manifest(path: Path | str) -> list[UtteranceRecord]:
             except (TypeError, ValueError, json.JSONDecodeError) as exc:
                 raise ValueError(f"Invalid manifest row {line_number}: {exc}") from exc
     return records
-

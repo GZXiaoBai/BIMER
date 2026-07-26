@@ -1,8 +1,10 @@
 # BIMER：中英文多模态对话情感识别
 
-毕业设计题目：**《基于语言感知跨模态融合的中英文对话情感识别研究与系统实现》**。
+暂定毕业设计题目：**《基于质量感知与对话上下文建模的中英文多模态情感识别研究与系统实现》**。若 v2 语言嵌入消融确认有稳定收益，再恢复“语言感知”表述。
 
 BIMER 联合文本、语音和视频特征，对中英文对话进行七分类情感识别，并输出逐句概率、模态门控权重和整段情绪时间线。项目支持 MELD、EmotionTalk、单模态/融合基线、消融实验、缺失模态、音频噪声、视频丢帧、跨语言测试及 Gradio 演示。
+
+V3 的验证筛选、配对门控排序、单次测试保护、校准、外部视频和 M2 验收流程见 [docs/v3_protocol.md](docs/v3_protocol.md)。V2 结果与检查点永久保留，V3 未通过验证集或外部测试门槛时系统回退 V2。
 
 > 本仓库不包含受许可约束的数据集或训练权重。EmotionTalk 下载前必须在 Hugging Face 接受其学术使用条款。模型结果仅用于研究，不构成心理或医疗判断。
 
@@ -13,9 +15,11 @@ BIMER 联合文本、语音和视频特征，对中英文对话进行七分类�
 - XLM-RoBERTa、Wav2Vec2 XLS-R、YuNet + R3D-18 冻结特征入口。
 - 1024条分片的无 pickle `.npz` 特征缓存。
 - 多数类、三种单模态、Early Fusion MLP、Early Fusion BiGRU 基线。
-- `LanguageAwareGatedFusion`：语言嵌入、可靠性门控、跨模态 Transformer、BiGRU 上下文和模态随机屏蔽。
-- 双数据集 weighted-F1 选模、早停、三随机种子、95% bootstrap 区间。
-- Whisper 自动切句、人工修订转写、逐句推理、时间线、JSON/CSV导出。
+- `QualityAwareLanguageGatedFusion`：连续质量输入、语言嵌入、跨模态 Transformer、BiGRU 上下文和严格单模态随机屏蔽。
+- EmotionTalk 以完整场景 `context_id` 建模，官方 19,250 条语句组成 742 段对话，同时保留原 `sample_id` 读取旧特征。
+- 训练集逐维归一化、逐轮确定性洗牌、最少15轮早停、类别分布/梯度/门控坍缩诊断。
+- 双数据集 weighted-F1 选模、三随机种子样本标准差、完整对话配对 cluster bootstrap。
+- Whisper 自动切句、32/8滑窗、人工修订转写、质量警告、时间线、JSON/CSV/PNG导出。
 - 缺失模态、10/20 dB噪声、25%/50%丢帧和中英跨语言实验入口。
 
 ## 环境安装
@@ -29,11 +33,10 @@ python -m pip install --upgrade pip
 python -m pip install -e '.[dev,inference]'
 ```
 
-严格复现实验可使用直接依赖锁：
+严格复现实验使用已提交的 Python 3.11 与 `uv.lock`：
 
 ```bash
-python -m pip install -r requirements.lock
-python -m pip install -e . --no-deps
+uv sync --extra dev --extra inference --frozen
 ```
 
 系统还需要 `ffmpeg` 和 `ffprobe`。macOS 可执行 `brew install ffmpeg`。
@@ -107,12 +110,21 @@ EmotionTalk train 的15,413条样本使用全局 shard 范围跨 Kaggle Session 
 
 ### 3. 训练与评估
 
+先生成 v2 连续质量和三种真实损坏训练视图（需原始媒体、YuNet、GPU编码器）：
+
+```bash
+./scripts/prepare_v2_quality_views.sh
+```
+
+学习率或结构筛选必须使用 `--skip-test`：
+
 ```bash
 bimer train \
   --manifest data/processed/all.jsonl \
   --features artifacts/features/standard \
   --output artifacts/experiments \
-  --model lagf --training-scope joint --seed 42 --device cuda
+  --model quality_lagf --training-scope joint --seed 42 --device cuda \
+  --skip-test
 ```
 
 缺失视频模态评估：
@@ -126,14 +138,19 @@ bimer evaluate \
   --output artifacts/experiments/robustness/missing-vision.json
 ```
 
-全模型、三随机种子、消融和跨语言矩阵：
+可续跑的 v2 学习率、正式三种子和消融矩阵：
 
 ```bash
-make full-experiment \
-  MANIFEST=data/processed/all.jsonl \
-  FEATURES=artifacts/features/standard \
-  OUTPUT=artifacts/experiments \
-  DEVICE=cuda
+python scripts/run_v2_experiments.py \
+  --stage all \
+  --quality-features artifacts/features/bilingual-v2-quality \
+  --augmentation-manifest data/processed/v2/corruption-train-10pct.jsonl \
+  --augmentation-features artifacts/features/v2-corruption-audio10 \
+  --augmentation-manifest data/processed/v2/corruption-train-10pct.jsonl \
+  --augmentation-features artifacts/features/v2-corruption-video50 \
+  --augmentation-manifest data/processed/v2/corruption-train-10pct-asr.jsonl \
+  --augmentation-features artifacts/features/v2-corruption-whisper \
+  --device cuda
 ```
 
 完整实验口径见 [docs/experiment_protocol.md](docs/experiment_protocol.md)。
@@ -142,7 +159,7 @@ make full-experiment \
 
 ```bash
 bimer serve \
-  --checkpoint artifacts/experiments/lagf/joint/seed-42/best.pt \
+  --checkpoint artifacts/experiments/v2/formal/quality_lagf/quality_lagf/joint/seed-42/best.pt \
   --yunet-model artifacts/models/face_detection_yunet_2023mar.onnx \
   --device auto
 ```
@@ -152,7 +169,7 @@ bimer serve \
 ```bash
 bimer analyze \
   --video demo/dialogue.mp4 \
-  --checkpoint artifacts/experiments/lagf/joint/seed-42/best.pt \
+  --checkpoint artifacts/experiments/v2/formal/quality_lagf/quality_lagf/joint/seed-42/best.pt \
   --yunet-model artifacts/models/face_detection_yunet_2023mar.onnx \
   --language auto \
   --output artifacts/exports/demo

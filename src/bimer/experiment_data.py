@@ -18,7 +18,10 @@ def build_dialogue_examples(
     max_length: int = 32,
     overlap: int = 8,
 ) -> list[DialogueExample]:
-    feature_rows: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = {}
+    feature_rows: dict[
+        str,
+        tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    ] = {}
     for shard in shards:
         for index, sample_id in enumerate(shard.sample_ids.tolist()):
             key = str(sample_id)
@@ -29,6 +32,7 @@ def build_dialogue_examples(
                 shard.audio[index],
                 shard.vision[index],
                 shard.modality_mask[index],
+                np.asarray(shard.modality_quality)[index],
             )
 
     materialized = list(records)
@@ -48,6 +52,7 @@ def build_dialogue_examples(
                 audio=np.stack([row[1] for row in rows]).astype(np.float32),
                 vision=np.stack([row[2] for row in rows]).astype(np.float32),
                 modality_mask=np.stack([row[3] for row in rows]).astype(np.bool_),
+                modality_quality=np.stack([row[4] for row in rows]).astype(np.float32),
                 labels=np.asarray(
                     [emotion_index(str(record.emotion)) for record in window.records],
                     dtype=np.int64,

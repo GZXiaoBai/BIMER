@@ -27,7 +27,7 @@ def make_context_windows(
 
     grouped: dict[tuple[str, str, str], list[UtteranceRecord]] = defaultdict(list)
     for record in records:
-        grouped[(record.dataset, str(record.split), record.dialogue_id)].append(record)
+        grouped[(record.dataset, str(record.split), record.effective_context_id)].append(record)
 
     windows: list[ContextWindow] = []
     stride = max_length - overlap
@@ -61,4 +61,3 @@ def merge_window_probabilities(
         sample_id: np.mean(np.stack(sample_predictions), axis=0)
         for sample_id, sample_predictions in values.items()
     }
-

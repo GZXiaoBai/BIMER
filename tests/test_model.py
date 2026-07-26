@@ -2,6 +2,7 @@ import torch
 
 from bimer.model import (
     LanguageAwareGatedFusion,
+    QualityAwareLanguageGatedFusion,
     apply_modality_dropout,
 )
 
@@ -54,6 +55,18 @@ def test_modality_dropout_never_removes_every_available_modality():
     assert torch.all(dropped.sum(dim=-1) >= 1)
 
 
+def test_modality_dropout_drops_exactly_one_modality_when_selected():
+    mask = torch.tensor(
+        [[[1, 1, 1], [1, 1, 0], [1, 0, 0]]],
+        dtype=torch.bool,
+    )
+
+    kept = apply_modality_dropout(mask, probability=1.0)
+
+    assert kept.sum(dim=-1).tolist() == [[2, 1, 1]]
+    assert torch.equal(kept[0, 2], mask[0, 2])
+
+
 def test_ablation_switches_still_produce_finite_predictions():
     model = LanguageAwareGatedFusion(
         text_dim=4,
@@ -73,3 +86,69 @@ def test_ablation_switches_still_produce_finite_predictions():
     output = model(**_inputs())
     assert torch.isfinite(output.logits).all()
 
+
+def test_cross_modal_transformer_disables_nested_tensor_for_device_compatibility():
+    model = LanguageAwareGatedFusion(
+        text_dim=4,
+        audio_dim=6,
+        vision_dim=5,
+        d_model=8,
+        num_heads=2,
+        transformer_layers=1,
+        transformer_ffn_dim=16,
+        context_hidden_dim=4,
+    )
+
+    assert model.cross_modal_transformer.enable_nested_tensor is False
+    assert model.cross_modal_transformer.use_nested_tensor is False
+
+
+def test_quality_aware_gate_accepts_zero_quality_without_nan():
+    model = QualityAwareLanguageGatedFusion(
+        text_dim=4,
+        audio_dim=6,
+        vision_dim=5,
+        d_model=8,
+        num_heads=2,
+        transformer_layers=1,
+        transformer_ffn_dim=16,
+        context_hidden_dim=4,
+        dropout=0.0,
+        modality_dropout=0.0,
+    ).eval()
+    inputs = _inputs()
+    inputs["modality_quality"] = torch.zeros(2, 3, 3, 4)
+
+    output = model(**inputs)
+
+    assert model.gate_networks[0][0].in_features == 12
+    assert torch.isfinite(output.logits).all()
+    assert torch.isfinite(output.gates).all()
+    assert torch.allclose(output.gates[0, :3].sum(dim=-1), torch.ones(3))
+
+
+def test_quality_input_ablation_keeps_outputs_invariant_to_quality_values():
+    model = QualityAwareLanguageGatedFusion(
+        text_dim=4,
+        audio_dim=6,
+        vision_dim=5,
+        d_model=8,
+        num_heads=2,
+        transformer_layers=1,
+        transformer_ffn_dim=16,
+        context_hidden_dim=4,
+        dropout=0.0,
+        modality_dropout=0.0,
+        use_quality_input=False,
+    ).eval()
+    first = _inputs()
+    first["modality_quality"] = torch.zeros(2, 3, 3, 4)
+    second = _inputs()
+    second["modality_quality"] = torch.ones(2, 3, 3, 4)
+
+    with torch.no_grad():
+        first_output = model(**first)
+        second_output = model(**second)
+
+    torch.testing.assert_close(first_output.gates, second_output.gates)
+    torch.testing.assert_close(first_output.logits, second_output.logits)

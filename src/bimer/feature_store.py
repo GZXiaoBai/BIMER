@@ -14,8 +14,16 @@ class FeatureShard:
     audio: np.ndarray
     vision: np.ndarray
     modality_mask: np.ndarray
+    modality_quality: np.ndarray | None = None
 
     def __post_init__(self) -> None:
+        if self.modality_quality is None:
+            quality = np.repeat(
+                np.asarray(self.modality_mask, dtype=np.float32)[..., None],
+                4,
+                axis=-1,
+            )
+            object.__setattr__(self, "modality_quality", quality)
         validate_feature_shard(self)
 
 
@@ -40,6 +48,11 @@ def validate_feature_shard(
             raise ValueError(f"{name} features must be finite")
     if np.asarray(shard.modality_mask).shape != (len(sample_ids), 3):
         raise ValueError("modality_mask must have shape [rows, 3]")
+    quality = np.asarray(shard.modality_quality)
+    if quality.shape != (len(sample_ids), 3, 4):
+        raise ValueError("modality_quality must have shape [rows, 3, 4]")
+    if not np.isfinite(quality).all() or np.any((quality < 0) | (quality > 1)):
+        raise ValueError("modality_quality values must be finite and within [0, 1]")
 
 
 class FeatureStore:
@@ -68,6 +81,7 @@ class FeatureStore:
                     audio=shard.audio.astype(np.float32),
                     vision=shard.vision.astype(np.float32),
                     modality_mask=shard.modality_mask.astype(np.bool_),
+                    modality_quality=np.asarray(shard.modality_quality, np.float32),
                 )
             temporary.replace(path)
         finally:
@@ -82,6 +96,11 @@ class FeatureStore:
                 audio=payload["audio"],
                 vision=payload["vision"],
                 modality_mask=payload["modality_mask"],
+                modality_quality=(
+                    payload["modality_quality"]
+                    if "modality_quality" in payload.files
+                    else None
+                ),
             )
 
     def paths(self, dataset: str, split: str) -> list[Path]:

@@ -9,6 +9,29 @@ from PIL import Image
 from torch import Tensor, nn
 
 from .robustness import drop_video_frames
+from .quality import vision_quality
+
+
+WAV2VEC2_MIN_INPUT_SAMPLES = 400
+
+
+def prepare_audio_waveforms(
+    waveforms: Sequence[np.ndarray],
+    *,
+    minimum_samples: int = WAV2VEC2_MIN_INPUT_SAMPLES,
+) -> tuple[list[np.ndarray], np.ndarray]:
+    if minimum_samples <= 0:
+        raise ValueError("minimum_samples must be positive")
+    prepared: list[np.ndarray] = []
+    available: list[bool] = []
+    for waveform in waveforms:
+        signal = np.asarray(waveform, dtype=np.float32).reshape(-1)
+        is_available = signal.size >= minimum_samples
+        prepared.append(
+            signal if is_available else np.zeros(minimum_samples, dtype=np.float32)
+        )
+        available.append(is_available)
+    return prepared, np.asarray(available, dtype=np.bool_)
 
 
 def mean_pool_hidden(hidden: Tensor, attention_mask: Tensor) -> Tensor:
@@ -79,8 +102,9 @@ class AudioFeatureExtractor:
         self.model.requires_grad_(False)
 
     def _encode_batch(self, waveforms: Sequence[np.ndarray]) -> np.ndarray:
+        prepared, _ = prepare_audio_waveforms(waveforms)
         inputs = self.processor(
-            [np.asarray(waveform, np.float32) for waveform in waveforms],
+            prepared,
             sampling_rate=16000,
             padding=True,
             return_tensors="pt",
@@ -146,6 +170,44 @@ def read_uniform_video_frames(video_path: Path | str, *, count: int = 16) -> np.
     return np.stack(frames)
 
 
+def read_uniform_video_segment_frames(
+    video_path: Path | str,
+    *,
+    start_seconds: float,
+    end_seconds: float,
+    count: int = 16,
+) -> np.ndarray:
+    if start_seconds < 0 or end_seconds <= start_seconds:
+        raise ValueError("video segment timestamps are invalid")
+    try:
+        import cv2
+    except ImportError as exc:
+        raise RuntimeError("Install opencv-python-headless to read video frames") from exc
+    capture = cv2.VideoCapture(str(video_path))
+    if not capture.isOpened():
+        capture.release()
+        raise RuntimeError(f"Cannot open video {video_path}")
+    total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = float(capture.get(cv2.CAP_PROP_FPS))
+    if total_frames <= 0 or fps <= 0:
+        capture.release()
+        raise RuntimeError(f"Video has invalid frame metadata: {video_path}")
+    first = min(total_frames - 1, max(0, int(round(start_seconds * fps))))
+    last = min(total_frames - 1, max(first, int(round(end_seconds * fps)) - 1))
+    positions = np.rint(np.linspace(first, last, count)).astype(np.int64)
+    frames: list[np.ndarray] = []
+    try:
+        for position in positions:
+            capture.set(cv2.CAP_PROP_POS_FRAMES, int(position))
+            readable, frame = capture.read()
+            if not readable or frame is None:
+                raise RuntimeError(f"Cannot read frame {position} from {video_path}")
+            frames.append(frame[:, :, ::-1].copy())
+    finally:
+        capture.release()
+    return np.stack(frames)
+
+
 def _center_square(frame: np.ndarray) -> np.ndarray:
     height, width = frame.shape[:2]
     size = min(height, width)
@@ -171,17 +233,29 @@ class YuNetFaceCropper:
         )
 
     def crop_largest(self, frame: np.ndarray) -> tuple[np.ndarray, bool]:
+        crop, found, _ = self.crop_largest_with_metadata(frame)
+        return crop, found
+
+    def crop_largest_with_metadata(
+        self, frame: np.ndarray
+    ) -> tuple[np.ndarray, bool, tuple[float, float, float, float] | None]:
         height, width = frame.shape[:2]
         self.detector.setInputSize((width, height))
         _, faces = self.detector.detect(frame[:, :, ::-1])
         if faces is None or len(faces) == 0:
-            return _center_square(frame), False
+            return _center_square(frame), False, None
         face = max(faces, key=lambda item: float(item[2] * item[3]))
         x, y, w, h = face[:4].astype(int)
         margin = int(max(w, h) * 0.15)
         left, top = max(0, x - margin), max(0, y - margin)
         right, bottom = min(width, x + w + margin), min(height, y + h + margin)
-        return frame[top:bottom, left:right], True
+        normalized_bbox = (
+            float(x / max(1, width)),
+            float(y / max(1, height)),
+            float(w / max(1, width)),
+            float(h / max(1, height)),
+        )
+        return frame[top:bottom, left:right], True, normalized_bbox
 
 
 def prepare_video_clip(
@@ -191,16 +265,78 @@ def prepare_video_clip(
     frame_drop_fraction: float = 0.0,
     seed: int = 42,
 ) -> tuple[np.ndarray, bool]:
+    clip, available, _ = prepare_video_clip_with_quality(
+        video_path,
+        face_cropper=face_cropper,
+        frame_drop_fraction=frame_drop_fraction,
+        seed=seed,
+    )
+    return clip, available
+
+
+def prepare_video_clip_with_quality(
+    video_path: Path | str,
+    *,
+    face_cropper: YuNetFaceCropper,
+    frame_drop_fraction: float = 0.0,
+    seed: int = 42,
+) -> tuple[np.ndarray, bool, np.ndarray]:
     frames = read_uniform_video_frames(video_path, count=16)
+    return _prepare_sampled_frames(
+        frames,
+        face_cropper=face_cropper,
+        frame_drop_fraction=frame_drop_fraction,
+        seed=seed,
+    )
+
+
+def prepare_video_segment_with_quality(
+    video_path: Path | str,
+    *,
+    start_seconds: float,
+    end_seconds: float,
+    face_cropper: YuNetFaceCropper,
+    frame_drop_fraction: float = 0.0,
+    seed: int = 42,
+) -> tuple[np.ndarray, bool, np.ndarray]:
+    frames = read_uniform_video_segment_frames(
+        video_path,
+        start_seconds=start_seconds,
+        end_seconds=end_seconds,
+        count=16,
+    )
+    return _prepare_sampled_frames(
+        frames,
+        face_cropper=face_cropper,
+        frame_drop_fraction=frame_drop_fraction,
+        seed=seed,
+    )
+
+
+def _prepare_sampled_frames(
+    frames: np.ndarray,
+    *,
+    face_cropper: YuNetFaceCropper,
+    frame_drop_fraction: float,
+    seed: int,
+) -> tuple[np.ndarray, bool, np.ndarray]:
     if frame_drop_fraction:
         frames = drop_video_frames(frames, fraction=frame_drop_fraction, seed=seed)
     prepared: list[np.ndarray] = []
     detected: list[bool] = []
+    bboxes: list[tuple[float, float, float, float] | None] = []
     for frame in frames:
-        crop, found = face_cropper.crop_largest(frame)
+        metadata_cropper = getattr(face_cropper, "crop_largest_with_metadata", None)
+        if metadata_cropper is None:
+            crop, found = face_cropper.crop_largest(frame)
+            bbox = None
+        else:
+            crop, found, bbox = metadata_cropper(frame)
         prepared.append(np.asarray(Image.fromarray(crop).resize((112, 112))))
         detected.append(found)
-    return np.stack(prepared), vision_modality_available(detected)
+        bboxes.append(bbox)
+    quality = vision_quality(detected, bboxes, expected_frames=16)
+    return np.stack(prepared), vision_modality_available(detected), quality
 
 
 def _prepare_clip_tensor(clips: Sequence[np.ndarray]) -> Tensor:
@@ -271,12 +407,50 @@ class VisionFeatureExtractor:
         frame_drop_fraction: float = 0.0,
         seed: int = 42,
     ) -> tuple[np.ndarray, bool]:
-        clip, available = prepare_video_clip(
+        feature, available, _ = self.encode_video_with_quality(
+            video_path,
+            face_cropper=face_cropper,
+            frame_drop_fraction=frame_drop_fraction,
+            seed=seed,
+        )
+        return feature, available
+
+    def encode_video_with_quality(
+        self,
+        video_path: Path | str,
+        *,
+        face_cropper: YuNetFaceCropper,
+        frame_drop_fraction: float = 0.0,
+        seed: int = 42,
+    ) -> tuple[np.ndarray, bool, np.ndarray]:
+        clip, available, quality = prepare_video_clip_with_quality(
             video_path,
             face_cropper=face_cropper,
             frame_drop_fraction=frame_drop_fraction,
             seed=seed,
         )
         if not available:
-            return np.zeros((1, self.output_dim), dtype=np.float32), False
-        return self.encode_frames(clip), True
+            return np.zeros((1, self.output_dim), dtype=np.float32), False, quality
+        return self.encode_frames(clip), True, quality
+
+    def encode_video_segment_with_quality(
+        self,
+        video_path: Path | str,
+        *,
+        start_seconds: float,
+        end_seconds: float,
+        face_cropper: YuNetFaceCropper,
+        frame_drop_fraction: float = 0.0,
+        seed: int = 42,
+    ) -> tuple[np.ndarray, bool, np.ndarray]:
+        clip, available, quality = prepare_video_segment_with_quality(
+            video_path,
+            start_seconds=start_seconds,
+            end_seconds=end_seconds,
+            face_cropper=face_cropper,
+            frame_drop_fraction=frame_drop_fraction,
+            seed=seed,
+        )
+        if not available:
+            return np.zeros((1, self.output_dim), dtype=np.float32), False, quality
+        return self.encode_frames(clip), True, quality

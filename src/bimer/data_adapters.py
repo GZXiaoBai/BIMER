@@ -76,6 +76,7 @@ def load_meld_csv(
     *,
     media_root: Path | str,
     split: str,
+    duration_probe: Callable[[Path], float] = probe_duration,
 ) -> list[UtteranceRecord]:
     table = pd.read_csv(csv_path)
     required = {
@@ -95,19 +96,32 @@ def load_meld_csv(
     for row in table.to_dict(orient="records"):
         dialogue_id = str(row["Dialogue_ID"])
         utterance_id = int(row["Utterance_ID"])
+        media_path = root / f"dia{dialogue_id}_utt{utterance_id}.mp4"
+        start_seconds = parse_timestamp(row["StartTime"])
+        end_seconds = parse_timestamp(row["EndTime"])
+        if end_seconds <= start_seconds:
+            if not media_path.is_file():
+                raise ValueError(
+                    f"Invalid MELD timestamps and missing media {media_path}"
+                )
+            duration = duration_probe(media_path)
+            if duration <= 0:
+                raise ValueError(f"Invalid MELD media duration for {media_path}")
+            end_seconds = start_seconds + duration
         records.append(
             UtteranceRecord(
                 dataset="meld",
                 split=split,
                 dialogue_id=dialogue_id,
+                context_id=dialogue_id,
                 utterance_id=utterance_id,
                 text=str(row["Utterance"]),
                 emotion=str(row["Emotion"]),
                 language="en",
                 speaker_id=str(row["Speaker"]),
-                start_seconds=parse_timestamp(row["StartTime"]),
-                end_seconds=parse_timestamp(row["EndTime"]),
-                video_path=root / f"dia{dialogue_id}_utt{utterance_id}.mp4",
+                start_seconds=start_seconds,
+                end_seconds=end_seconds,
+                video_path=media_path,
             )
         )
     return records
@@ -171,6 +185,7 @@ def load_emotiontalk_manifest(
         file_name = str(item["file_name"])
         media_path = root / file_name
         dialogue_id = str(item.get("dialogue_id") or Path(file_name).stem.rsplit("_", 1)[0])
+        context_id = str(item.get("context_id") or dialogue_id)
         utterance_id = int(item.get("utterance_id", ordinal))
         start, end = _record_times(item, media_path)
         records.append(
@@ -178,6 +193,7 @@ def load_emotiontalk_manifest(
                 dataset="emotiontalk",
                 split=split,
                 dialogue_id=dialogue_id,
+                context_id=context_id,
                 utterance_id=utterance_id,
                 text=str(item.get("content", "")),
                 emotion=_emotion_from_payload(item["emotion_result"]),
@@ -302,6 +318,7 @@ def load_emotiontalk_official_csv(
                 dataset="emotiontalk",
                 split=EMOTIONTALK_GROUP_SPLITS[group],
                 dialogue_id="_".join(stem_parts[:-1]),
+                context_id="_".join(stem_parts[:-2]),
                 utterance_id=int(stem_parts[-1]),
                 text=text_by_key[key],
                 emotion=str(item["emotion"]),

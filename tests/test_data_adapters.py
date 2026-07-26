@@ -39,6 +39,37 @@ def test_loads_meld_csv_into_unified_records(tmp_path):
     assert records[0].end_seconds == pytest.approx(3.5)
 
 
+def test_loads_meld_csv_repairs_equal_timestamps_from_media_duration(tmp_path):
+    csv_path = tmp_path / "test_sent_emo.csv"
+    media_root = tmp_path / "videos"
+    media_root.mkdir()
+    media_path = media_root / "dia155_utt3.mp4"
+    media_path.touch()
+    pd.DataFrame(
+        [
+            {
+                "Utterance": "Oh my God.",
+                "Speaker": "Phoebe",
+                "Emotion": "surprise",
+                "Dialogue_ID": 155,
+                "Utterance_ID": 3,
+                "StartTime": "0:12:32,632",
+                "EndTime": "0:12:32,632",
+            }
+        ]
+    ).to_csv(csv_path, index=False)
+
+    records = load_meld_csv(
+        csv_path,
+        media_root=media_root,
+        split="test",
+        duration_probe=lambda path: 1.75 if path == media_path else 0.0,
+    )
+
+    assert records[0].start_seconds == pytest.approx(752.632)
+    assert records[0].end_seconds == pytest.approx(754.382)
+
+
 def test_loads_emotiontalk_json_manifest_and_maps_labels(tmp_path):
     manifest = tmp_path / "train.json"
     manifest.write_text(
@@ -102,6 +133,7 @@ def test_loads_emotiontalk_official_csv_with_published_group_splits(tmp_path):
     assert len(records) == 1
     assert records[0].split == "validation"
     assert records[0].dialogue_id == "G00001_01_07"
+    assert records[0].context_id == "G00001_01"
     assert records[0].speaker_id == "07"
     assert records[0].utterance_id == 3
     assert records[0].text == "这是重叠。"
