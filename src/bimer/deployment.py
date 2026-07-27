@@ -85,6 +85,7 @@ class RuntimeSettings:
     minimum_free_bytes: int = 2 * 1024**3
     asr_process_isolation: bool = True
     asr_timeout_seconds: int = 600
+    low_memory_mode: bool = False
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, object]) -> RuntimeSettings:
@@ -98,6 +99,7 @@ class RuntimeSettings:
             minimum_free_bytes=int(cast(int, value.get("minimum_free_bytes", 2 * 1024**3))),
             asr_process_isolation=value.get("asr_process_isolation", True) is True,
             asr_timeout_seconds=int(cast(int, value.get("asr_timeout_seconds", 600))),
+            low_memory_mode=value.get("low_memory_mode", False) is True,
         )
         if settings.window_size <= 0:
             raise ValueError("runtime.window_size must be positive")

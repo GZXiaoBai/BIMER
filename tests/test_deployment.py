@@ -100,6 +100,18 @@ def test_manifest_rejects_incompatible_public_contracts(
         DeploymentManifest.load(_write_manifest(tmp_path, payload))
 
 
+def test_manifest_enables_low_memory_runtime_mode(tmp_path: Path) -> None:
+    payload = _manifest_payload()
+    payload["runtime"] = {
+        "minimum_free_bytes": 1,
+        "low_memory_mode": True,
+    }
+
+    manifest = DeploymentManifest.load(_write_manifest(tmp_path, payload))
+
+    assert manifest.runtime.low_memory_mode is True
+
+
 @pytest.mark.parametrize(
     ("runtime", "message"),
     [

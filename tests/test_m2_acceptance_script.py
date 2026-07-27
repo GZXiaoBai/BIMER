@@ -16,6 +16,8 @@ def test_m2_acceptance_uses_the_frozen_deployment_manifest_interface():
 
     assert "--deployment" in result.stdout
     assert "--artifact-root" in result.stdout
+    assert "--allow-partial" in result.stdout
+    assert "--preserve-runtime-cache" in result.stdout
     assert "--checkpoint" not in result.stdout
 
 
@@ -32,6 +34,11 @@ def test_m2_acceptance_runner_enforces_time_memory_swap_and_exports():
     assert "wrong_format_error" in python_text
     assert "oversized_file_error" in python_text
     assert "silent_video_error" in python_text
+    assert '"complete": complete' in python_text
+    assert "authorized 30-60 second Chinese face video" in python_text
     assert "/usr/bin/time -l" in shell_text
     assert "6979321856" in shell_text
     assert "swap_before" in shell_text and "swap_after" in shell_text
+    assert "process_swaps" in shell_text
+    assert "peak memory footprint" in shell_text
+    assert 'PYTHON="${BIMER_PYTHON:-$ROOT/.venv/bin/python}"' in shell_text

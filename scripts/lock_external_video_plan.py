@@ -51,6 +51,8 @@ def main() -> int:
         languages=[row["language"] for row in rows],
         conditions=[row["condition"] for row in rows],
         durations=measured,
+        authorization_bases=[row["authorization_basis"] for row in rows],
+        authorization_references=[row["authorization_reference"] for row in rows],
         output_path=args.output,
     )
     payload = json.loads(output.read_text(encoding="utf-8"))

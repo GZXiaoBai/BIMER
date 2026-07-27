@@ -339,3 +339,56 @@ def test_pretrained_pipeline_text_edit_reuses_cached_audio_and_vision(tmp_path, 
 
     assert calls == {"text": 2, "audio_decode": 1, "audio": 1, "vision": 1}
     assert set(pipeline.last_runtime_profile) == {"text", "audio", "vision"}
+
+
+def test_low_memory_pipeline_releases_each_modality_after_extraction(monkeypatch):
+    monkeypatch.setattr(
+        inference,
+        "_extract_full_waveform",
+        lambda _path: np.full(32000, 0.1, dtype=np.float32),
+    )
+    created = {"text": 0, "audio": 0, "vision": 0}
+
+    class Text:
+        def encode(self, values):
+            return np.ones((len(values), 4), dtype=np.float32)
+
+    class Audio:
+        def encode(self, values):
+            return np.ones((len(values), 6), dtype=np.float32)
+
+    class Vision:
+        def encode_video_segment_with_quality(self, *_args, **_kwargs):
+            return (
+                np.ones((1, 5), dtype=np.float32),
+                True,
+                np.ones(4, dtype=np.float32),
+            )
+
+    def factory(name, extractor_type):
+        def build():
+            created[name] += 1
+            return extractor_type()
+
+        return inference.LazyExtractor(build)
+
+    text = factory("text", Text)
+    audio = factory("audio", Audio)
+    vision = factory("vision", Vision)
+    pipeline = inference.PretrainedFeaturePipeline(
+        text_extractor=text,
+        audio_extractor=audio,
+        vision_extractor=vision,
+        face_cropper=object(),
+    )
+
+    bundle = pipeline.extract(
+        Path("sample.mp4"),
+        [TranscriptSegment(0.0, 2.0, "hello")],
+    )
+
+    assert bundle.text.shape == (1, 4)
+    assert created == {"text": 1, "audio": 1, "vision": 1}
+    assert not text.loaded
+    assert not audio.loaded
+    assert not vision.loaded

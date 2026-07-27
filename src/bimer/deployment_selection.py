@@ -11,12 +11,18 @@ def select_deployment_model(
     external_report: Mapping[str, object],
     m2_report: Mapping[str, object],
 ) -> dict[str, object]:
+    ranking_weight = frozen_selection.get("gate_ranking_weight", 0.0)
+    try:
+        has_ranking_weight = float(ranking_weight) > 0
+    except (TypeError, ValueError):
+        has_ranking_weight = False
     validation_passed = (
         frozen_selection.get("state") == "frozen"
         and frozen_selection.get("version") == "v3"
-        and float(frozen_selection.get("gate_ranking_weight", 0.0)) > 0
+        and has_ranking_weight
     )
-    external_passed = bool(external_report.get("v3_acceptance", {}).get("accepted", False))
+    acceptance = external_report.get("v3_acceptance", {})
+    external_passed = isinstance(acceptance, Mapping) and acceptance.get("accepted", False) is True
     m2_passed = bool(m2_report.get("passed", False))
     checks = {
         "validation_ranking_passed": validation_passed,

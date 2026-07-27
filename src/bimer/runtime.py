@@ -17,6 +17,7 @@ from .feature_extractors import (
 )
 from .inference import (
     DialogueAnalyzer,
+    LazyExtractor,
     PretrainedFeaturePipeline,
 )
 from .model_factory import build_model
@@ -76,6 +77,7 @@ def build_runtime(
         cache_directory=root / manifest.runtime.cache_directory,
         model_version=manifest.model_version,
         asr_timeout_seconds=manifest.runtime.asr_timeout_seconds,
+        low_memory_mode=manifest.runtime.low_memory_mode,
         encoder_versions={
             name: f"{reference.identifier}@{reference.revision}"
             for name, reference in manifest.encoders.items()
@@ -108,6 +110,7 @@ def build_legacy_runtime(
         cache_directory=Path(cache_directory),
         model_version=model_version,
         asr_timeout_seconds=600,
+        low_memory_mode=False,
         encoder_versions={
             "text": text_model,
             "audio": audio_model,
@@ -129,6 +132,7 @@ def _assemble_runtime(
     cache_directory: Path,
     model_version: str,
     asr_timeout_seconds: int,
+    low_memory_mode: bool,
     encoder_versions: dict[str, str],
 ) -> DialogueAnalyzer:
     device = resolve_device(device_name)
@@ -157,43 +161,66 @@ def _assemble_runtime(
     face_cropper = YuNetFaceCropper(yunet_path)
     cache = RuntimeFeatureCache(cache_directory)
 
-    try:
-        pipeline = PretrainedFeaturePipeline(
-            text_extractor=TextFeatureExtractor(
-                text_model,
-                device=extractor_device,
-            ),
-            audio_extractor=AudioFeatureExtractor(
-                audio_model,
-                device=extractor_device,
-            ),
-            vision_extractor=VisionFeatureExtractor(
+    if low_memory_mode:
+
+        def text_factory() -> TextFeatureExtractor:
+            return TextFeatureExtractor(text_model, device=extractor_device)
+
+        def audio_factory() -> AudioFeatureExtractor:
+            return AudioFeatureExtractor(audio_model, device=extractor_device)
+
+        def vision_factory() -> VisionFeatureExtractor:
+            return VisionFeatureExtractor(
                 device=extractor_device,
                 weights_path=vision_weights_path,
-            ),
+            )
+
+        pipeline = PretrainedFeaturePipeline(
+            text_extractor=LazyExtractor(text_factory),
+            audio_extractor=LazyExtractor(audio_factory),
+            vision_extractor=LazyExtractor(vision_factory),
             face_cropper=face_cropper,
             cache=cache,
             encoder_versions=encoder_versions,
         )
-    except (RuntimeError, NotImplementedError) as exc:
-        if extractor_device != "mps":
-            raise
-        warnings.warn(
-            f"MPS feature extraction unavailable; falling back to CPU: {exc}",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        pipeline = PretrainedFeaturePipeline(
-            text_extractor=TextFeatureExtractor(text_model, device="cpu"),
-            audio_extractor=AudioFeatureExtractor(audio_model, device="cpu"),
-            vision_extractor=VisionFeatureExtractor(
-                device="cpu",
-                weights_path=vision_weights_path,
-            ),
-            face_cropper=face_cropper,
-            cache=cache,
-            encoder_versions=encoder_versions,
-        )
+    else:
+        try:
+            pipeline = PretrainedFeaturePipeline(
+                text_extractor=TextFeatureExtractor(
+                    text_model,
+                    device=extractor_device,
+                ),
+                audio_extractor=AudioFeatureExtractor(
+                    audio_model,
+                    device=extractor_device,
+                ),
+                vision_extractor=VisionFeatureExtractor(
+                    device=extractor_device,
+                    weights_path=vision_weights_path,
+                ),
+                face_cropper=face_cropper,
+                cache=cache,
+                encoder_versions=encoder_versions,
+            )
+        except (RuntimeError, NotImplementedError) as exc:
+            if extractor_device != "mps":
+                raise
+            warnings.warn(
+                f"MPS feature extraction unavailable; falling back to CPU: {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            pipeline = PretrainedFeaturePipeline(
+                text_extractor=TextFeatureExtractor(text_model, device="cpu"),
+                audio_extractor=AudioFeatureExtractor(audio_model, device="cpu"),
+                vision_extractor=VisionFeatureExtractor(
+                    device="cpu",
+                    weights_path=vision_weights_path,
+                ),
+                face_cropper=face_cropper,
+                cache=cache,
+                encoder_versions=encoder_versions,
+            )
 
     calibration_profile = (
         CalibrationProfile.load(calibration_path) if calibration_path is not None else None

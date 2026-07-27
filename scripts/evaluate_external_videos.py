@@ -12,7 +12,7 @@ from bimer.external_evaluation import (
     EXTERNAL_CONDITIONS,
     annotation_agreement,
     evaluate_external_predictions,
-    v3_external_acceptance,
+    external_model_acceptance,
 )
 from bimer.labels import EMOTION_LABELS
 
@@ -91,7 +91,13 @@ def main() -> int:
     parser.add_argument("--annotator-two", required=True, type=Path)
     parser.add_argument("--adjudicated", required=True, type=Path)
     parser.add_argument("--v2-predictions", required=True, type=Path)
-    parser.add_argument("--v3-predictions", required=True, type=Path)
+    parser.add_argument("--comparison-predictions", type=Path)
+    parser.add_argument("--comparison-name", default="candidate")
+    parser.add_argument(
+        "--v3-predictions",
+        type=Path,
+        help="Deprecated alias for --comparison-predictions.",
+    )
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--iterations", type=int, default=2000)
     args = parser.parse_args()
@@ -109,14 +115,23 @@ def main() -> int:
         raise SystemExit("Cohen's kappa is below 0.60; reannotation is required")
     adjudicated = _rows(args.adjudicated)
     v2 = _evaluate(plan, adjudicated, _rows(args.v2_predictions), args.iterations)
-    v3 = _evaluate(plan, adjudicated, _rows(args.v3_predictions), args.iterations)
     payload = {
         "annotation_agreement": agreement,
         "v2": v2,
-        "v3": v3,
-        "v3_acceptance": v3_external_acceptance(v2, v3),
         "conditions": list(EXTERNAL_CONDITIONS),
     }
+    comparison_path = args.comparison_predictions or args.v3_predictions
+    if comparison_path is not None:
+        comparison_name = "v3" if args.v3_predictions is not None else args.comparison_name
+        comparison = _evaluate(
+            plan,
+            adjudicated,
+            _rows(comparison_path),
+            args.iterations,
+        )
+        payload["comparison_name"] = comparison_name
+        payload["comparison"] = comparison
+        payload["comparison_acceptance"] = external_model_acceptance(v2, comparison)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
