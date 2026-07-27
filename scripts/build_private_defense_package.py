@@ -240,8 +240,9 @@ def write_readme(destination: Path) -> None:
 
 - 重启并在干净登录环境运行 `06-重启后最终验收.command`。当前 BIMER 进程实测
   swap 为 0，但运行前的 macOS 全局 swap 已非零，不能伪造“干净启动”结论。
-- 邀请第二名人工标注者独立填写 `02-annotator-two.csv`。第一、第二标注者必须
-  禁止互看，完成后才能计算 Cohen's kappa、仲裁并报告外测指标。
+- 由第一名人工标注者填写 `01-annotator-one.csv`，再邀请第二名人工标注者独立
+  填写 `02-annotator-two.csv`。当前两份标签均保持空白；两名标注者必须禁止
+  互看，完成后才能计算 Cohen's kappa、仲裁并报告外测指标。
 
 EmotionTalk、MELD 媒体、缓存特征和私人视频受许可约束，不包含在公开仓库中。
 """
