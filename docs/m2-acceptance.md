@@ -12,35 +12,40 @@ Mode: offline encoders, sequential low-memory MPS feature extraction, CPU Whispe
 
 | Check | Result | Threshold |
 |---|---:|---:|
+| Chinese face video duration | 50.00 s | 30–60 s |
+| Cold-cache Chinese analysis | 34.55 s | ≤120 s |
+| Chinese content | 8/8 segments in Chinese | Required |
+| Chinese face behavior | Vision enabled for all 8 segments | Required |
 | English no-face video duration | 31.72 s | 30–60 s |
-| Cold-cache English analysis | 19.12 s | ≤120 s |
-| Peak memory footprint | 3.94 GB (3.67 GiB) | ≤6.5 GiB |
+| Cold-cache English analysis | 18.42 s | ≤120 s |
+| Peak memory footprint | 3.84 GB (3.58 GiB) | ≤6.5 GiB |
 | BIMER process swap operations | 0 | 0 |
-| Edited-text reanalysis | 2.95 s | ≤15 s |
-| No-face behavior | Vision disabled for all 8 segments | Required |
-| JSON/CSV/PNG exports | Generated and downloaded in a real browser | Required |
-| Clickable timeline | Seeking from 25.16 s confirmed | Required |
-| Browser console errors | 0 | 0 |
+| Edited-text reanalysis | 4.03 s | ≤15 s |
+| No-face behavior | Vision disabled for all 8 English segments | Required |
+| JSON/CSV/PNG exports | Generated; browser download previously verified | Required |
+| Clickable timeline | Seeking from 25.16 s previously confirmed | Required |
+| Browser console errors | 0 in real-browser workflow | 0 |
 | Wrong extension | Rejected before analysis | Required |
 | File larger than 500 MB | Rejected before analysis | Required |
 | Video without audio stream | Rejected before analysis | Required |
 
-The cold-cache run cleared four feature-cache entries before analysis. Its
-edited-text profile was 2.70 s for text, 0.077 s for cached audio, 0.075 s for
-cached vision, and 0.034 s for fusion. This confirms that text editing does not
-recompute audio or visual features.
+The final bilingual cold-cache run cleared seven feature-cache entries before
+analysis. Its edited-text profile was 3.054 s for text, 0.089 s for cached
+audio, 0.085 s for cached vision, and 0.073 s for fusion. This confirms that
+text editing does not rerun transcription or recompute audio and visual
+features.
 
-Sequential low-memory loading reduced the measured peak memory footprint from
-5.33 GB to 3.94 GB (about 26%) while preserving the exported CSV and PNG
-SHA-256 values. The English analysis time changed from 17.87 s to 19.12 s and
-remained well below the 120 s limit.
+The Chinese sample is a 50-second excerpt (seconds 5–55) from the Voice of
+America Chinese interview “Ma Jian VOA interview 20181112.” The Wikimedia
+Commons source page identifies the VOA-only work as public domain in the United
+States. The original and excerpt hashes are recorded in `DATA_AND_LICENSES.md`.
+The sample contains continuous Mandarin speech and a visible interview face.
 
 The machine was already under substantial system-wide memory pressure before
-the run. macOS global swap usage increased by approximately 0.41 GB during the
-low-memory run, compared with approximately 1.50 GB in the eager-loading run.
-The BIMER process itself reported zero swap operations. A clean-login
-system-wide “swap unchanged” check remains pending and is not reported as
-passed.
+the final bilingual run. macOS global swap usage increased from 9,833.06 MB to
+10,582.31 MB. The BIMER process itself reported zero swap operations and stayed
+below the memory limit. A clean-login system-wide “swap unchanged” check
+remains pending and is not reported as passed.
 
 ## Runtime isolation
 
@@ -62,18 +67,16 @@ the real V2 checkpoint:
 7. Download JSON, CSV, and PNG outputs.
 8. Clear the 24-hour feature cache.
 
-The Chinese face-video half of final acceptance remains pending because an
-authorized 30–60 second Chinese sample has not yet been supplied. No synthetic
-or unlicensed sample will be substituted for the final claim.
-
-The machine-readable partial report intentionally records `complete: false`
-and `passed: false`. Its private evidence hashes are:
+The machine-readable final bilingual report records `complete: true` and
+`passed: true`. Its private evidence hashes are:
 
 - acceptance JSON:
-  `78882d9d23ea6552e3c80692ac632afa6b4ec015b6226713ba43e420ff78b62a`
+  `580fdf9c69f90b979489e5d8ea3ff3377752be5fe5aac4563f7a1b2bf97c7d5b`
 - resource JSON:
-  `8ec73d54c88d1875d8180669304707a2cf84e0f6afce5d7c3abbea2a5cb9f780`
+  `e4dac84d7c1c4e99e36c65b038d1b834b66cafacbd833b57eb68079c0292d9b7`
+- exported JSON:
+  `cf6f46dbd663fb38a994388beba6b86cd148937921838d0d6288c54ad3e7398f`
 - exported CSV:
-  `36274e04f76ed1a85a8aabc7ad4d08f13a0caf77ca046d89827078df0d7f0858`
+  `355c55fab46d6ee067ff6031c53504d9f5ff18041ee6423b6f70f34fbb394f7b`
 - exported PNG:
-  `9114a012f779cb49e2131e422098e659537cedd2b050edd7f553d0649711968b`
+  `3caa31698c7273262a749f5e5d13fa3b4f45aa919d047cc2d452570221b9097b`

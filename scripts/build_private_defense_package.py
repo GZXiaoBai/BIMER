@@ -20,6 +20,7 @@ PRIVATE_ASSET_PATHS = (
     Path("artifacts/analysis/v2-robustness"),
     Path("artifacts/analysis/v4-exploratory"),
     Path("artifacts/acceptance/m2-v2-english-low-memory-20260727"),
+    Path("artifacts/acceptance/m2-v2-bilingual-ma-jian-20260727"),
     Path("artifacts/cloud-downloads/v4-formal-20260727/bimer-v4-results.tar.gz"),
     Path("artifacts/exports/m2-smoke-en"),
     Path("output/deliverables"),
@@ -146,7 +147,19 @@ exec "$ROOT/.venv/bin/python" -m bimer.cli analyze \
 """,
     )
     write_launcher(
-        destination / "04-校验答辩包.command",
+        destination / "04-分析中文样例.command",
+        preamble
+        + """
+exec "$ROOT/.venv/bin/python" -m bimer.cli analyze \
+  --deployment "$ROOT/configs/deployment-v2.json" \
+  --artifact-root "$ROOT" \
+  --video "$ROOT/artifacts/demo/zh-face-ma-jian-voa-50s.mp4" \
+  --language zh \
+  --output "$ROOT/artifacts/exports/defense-zh"
+""",
+    )
+    write_launcher(
+        destination / "05-校验答辩包.command",
         preamble
         + """
 exec shasum -a 256 -c "$ROOT/SHA256SUMS"
@@ -162,23 +175,23 @@ def write_readme(destination: Path) -> None:
 - 固定的 V2 quality_lagf seed 42 检查点；
 - XLM-R、XLS-R、R3D-18、faster-whisper-small 与 YuNet 离线资产；
 - 当前 Python 3.11 虚拟环境；
-- 英文无人脸样例、预生成结果与论文/PPT；
-- V4 探索性结果原始包与低内存 M2 实测证据；
+- 已记录来源与哈希的中文人脸样例、英文无人脸样例和预生成结果；
+- V4 探索性结果原始包与双语低内存 M2 实测证据；
 - 经过校验的源码、配置、测试和依赖锁。
 
 ## 答辩前流程
 
-1. 双击 `04-校验答辩包.command`，确认全部哈希为 OK。
+1. 双击 `05-校验答辩包.command`，确认全部哈希为 OK。
 2. 双击 `01-离线自检.command`，确认 doctor 报告 `ok: true`。
 3. 关闭网络后双击 `02-启动演示.command`。
-4. 优先演示 30–60 秒授权样例；若现场环境异常，展示预生成英文结果与 PPT。
+4. 可用 `04-分析中文样例.command` 和 `03-分析英文样例.command` 预演；
+   若现场环境异常，展示预生成结果与 PPT。
 
 ## 当前缺口
 
-- 尚缺一段 30–60 秒、已获授权的中文人脸样例。
 - 尚未完成中英文各 10 段、双标注者的外部测试。
 - macOS 系统级 swap 不变需在干净登录环境复验；BIMER 进程实测 swap 为 0。
-- 备用录屏需在中文样例补齐后录制。
+- 备用录屏仍需录制。
 
 EmotionTalk、MELD 媒体、缓存特征和私人视频受许可约束，不包含在公开仓库中。
 """

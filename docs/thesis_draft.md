@@ -16,7 +16,7 @@
 
 实验结果表明，完整模型在 MELD 和 EmotionTalk 上的 weighted-F1 分别为 58.620%±0.830% 和 61.675%±1.423%，双语平均为 60.148%±1.124%。在相同特征和评价口径下，完整模型比 Early MLP 提高 1.493 个百分点，95% 置信区间为 [0.669, 2.200] 个百分点。消融实验显示，对话上下文和模态随机屏蔽分别带来 1.385 和 0.749 个百分点的双语收益，置信区间均不跨零。质量机制相对无门控上下文模型在干净集上的平均优势仅为 0.089 个百分点，不能证明其具有普遍收益；但在 25% 视频丢帧条件下提高 0.986 个百分点，显示出针对视频退化的局部价值。语言嵌入未得到消融支持。进一步的 V3 配对门控排序虽然能够降低受损模态权重，但未达到预先声明的分类性能门槛，因此停止训练并保留为负结果。事后探索性 V4 通过 LoRA 适配文本编码器，在三随机种子验证集上达到 64.556%±0.409% 的双语 weighted-F1 和 54.780%±0.936% 的 macro-F1；但其少数类增益为 1.329 个百分点，未达到预声明的 1.5 个百分点门槛，自适应上下文门和类别原型也未获得消融支持。本文因此未运行 V4 官方测试，正式结论与部署模型仍保持 V2。
 
-系统方面，本文实现固定部署清单、离线资产校验、MPS/CPU 回退、Whisper 子进程隔离、32/8 滑窗推理、转写编辑局部缓存、置信度与质量警告、时间线和 JSON/CSV/PNG 导出。在 MacBook Air M2 8 GB 上，31.72 秒英文无人脸视频的冷缓存完整分析耗时 19.12 秒，低内存模式峰值为 3.94 GB，BIMER 进程交换操作为 0；修改文本后的重新分析耗时 2.95 秒。由于测试前系统已处于较高的全局换页压力，系统级 swap 完全不变仍需在干净登录环境复验。结果说明，本研究虽未达到单数据集最佳性能，但形成了实验口径可信、创新边界清晰、可离线复现与演示的本科毕设系统。
+系统方面，本文实现固定部署清单、离线资产校验、MPS/CPU 回退、Whisper 子进程隔离、32/8 滑窗推理、转写编辑局部缓存、置信度与质量警告、时间线和 JSON/CSV/PNG 导出。在 MacBook Air M2 8 GB 上，50 秒中文人脸视频与 31.72 秒英文无人脸视频的冷缓存分析分别耗时 34.55 秒和 18.42 秒；同轮峰值为 3.84 GB，BIMER 进程交换操作为 0，修改文本后的重新分析耗时 4.03 秒。中文 8 段均启用视觉，英文 8 段均自动关闭视觉。由于测试前系统已处于较高的全局换页压力，系统级 swap 完全不变仍需在干净登录环境复验。结果说明，本研究虽未达到单数据集最佳性能，但形成了实验口径可信、创新边界清晰、可离线复现与演示的本科毕设系统。
 
 关键词：多模态情感识别；对话上下文；质量感知；中英文；缺失模态；鲁棒性
 
@@ -28,7 +28,7 @@ The official splits of MELD and EmotionTalk are preserved. Their labels are alig
 
 The proposed V2 model combines four-dimensional quality signals for each modality, masked quality gates, a cross-modal Transformer, and a bidirectional GRU over dialogue context. Training uses input normalization, modality dropout, real corrupted views, and balanced bilingual sampling. Formal experiments use three random seeds and 2,000 paired cluster-bootstrap replicates over complete dialogues. The model obtains weighted-F1 scores of 58.620%±0.830% on MELD and 61.675%±1.423% on EmotionTalk, with a bilingual average of 60.148%±1.124%. It improves over Early MLP by 1.493 percentage points, with a 95% confidence interval of [0.669, 2.200]. Ablations support dialogue context and modality dropout. Quality-aware gating shows a targeted benefit under video frame loss but no universal clean-set advantage; language embeddings are not supported. A V3 ranking objective changed corrupted-modality gates in the intended direction but failed the predeclared classification threshold and was stopped as a negative result. A post-hoc V4 study adapted XLM-R with LoRA and reached a three-seed bilingual validation weighted-F1 of 64.556%±0.409% and macro-F1 of 54.780%±0.936%. It nevertheless missed the predeclared minority-class threshold, while adaptive context gating and emotion prototypes were unsupported by ablation. V4 was therefore not evaluated on the official test sets and did not replace V2.
 
-The final system provides an offline deployment manifest, asset verification, MPS/CPU fallback, isolated Whisper transcription, sliding-window inference, partial cache invalidation after transcript editing, uncertainty and quality warnings, an interactive timeline, and JSON/CSV/PNG export. On an 8 GB MacBook Air M2, a cold-cache analysis of a 31.72-second English no-face video takes 19.12 seconds in low-memory mode with a 3.94 GB peak footprint and zero BIMER-process swap operations; transcript-only reanalysis takes 2.95 seconds. Because the machine was already under substantial system-wide memory pressure, an unchanged global swap level still requires a clean-login retest. The project does not claim state-of-the-art performance, but provides a reproducible and evidence-bounded bilingual multimodal research system suitable for an undergraduate thesis.
+The final system provides an offline deployment manifest, asset verification, MPS/CPU fallback, isolated Whisper transcription, sliding-window inference, partial cache invalidation after transcript editing, uncertainty and quality warnings, an interactive timeline, and JSON/CSV/PNG export. On an 8 GB MacBook Air M2, cold-cache analyses of a 50-second Chinese face video and a 31.72-second English no-face video take 34.55 and 18.42 seconds, respectively. The bilingual run has a 3.84 GB peak footprint and zero BIMER-process swap operations; transcript-only reanalysis takes 4.03 seconds. Vision is enabled for all eight Chinese segments and disabled for all eight English segments. Because the machine was already under substantial system-wide memory pressure, an unchanged global swap level still requires a clean-login retest. The project does not claim state-of-the-art performance, but provides a reproducible and evidence-bounded bilingual multimodal research system suitable for an undergraduate thesis.
 
 Keywords: multimodal emotion recognition; dialogue context; quality awareness; bilingual learning; missing modalities; robustness
 
@@ -199,7 +199,7 @@ BiGRU 的作用是捕捉情感惯性、事件响应和相邻语句转折。例�
 
 所有模型使用相同的官方划分、冻结特征、标签顺序和归一化口径。正式对比包括 Early MLP、Early Context、无门控上下文模型和完整 Quality LAGF。消融依次去除语言嵌入、门控、上下文、质量输入、模态随机屏蔽和扰动视图训练。每个正式模型和消融条件均运行 42、123、2026 三个随机种子。
 
-为确保链路正确，每种模型先在 16 个样本上进行过拟合测试。自动测试还覆盖特征维度、上下文掩码、窗口合并、缺失模态、缓存失效、校准和导出。工程收口后共有 402 项测试通过，总体语句和分支覆盖率为 81.13%。
+为确保链路正确，每种模型先在 16 个样本上进行过拟合测试。自动测试还覆盖特征维度、上下文掩码、窗口合并、缺失模态、缓存失效、校准和导出。工程收口后共有 405 项测试通过，总体语句和分支覆盖率为 81.13%。
 
 ## 5.2 主结果
 
@@ -289,7 +289,7 @@ V4 在 V2 确认性实验完成后启动，属于事后探索性研究。第一�
 
 内部有效性方面，本文保留官方划分、统一归一化口径并禁止测试集调参；三随机种子和配对 cluster bootstrap 降低了单次运行与对话内相关性带来的误判。构念有效性方面，七类标签仍是对复杂情感的简化，影视表演和演员控制场景也不等于自然交互。
 
-外部有效性仍需通过中英文各 10 段、五类真实条件的视频测试补充。该测试清单必须在运行模型前锁定 SHA-256，由两名标注者独立标注并报告 Cohen’s kappa。由于当前尚未获得完整授权视频和第二标注者结果，本文不填写外部测试数字，也不利用未来外测结果继续调整模型。
+外部有效性仍需通过中英文各 10 段、五类真实条件的视频测试补充。该测试清单必须在运行模型前锁定 SHA-256，由两名标注者独立标注并报告 Cohen’s kappa。当前仅有一段中文正常人脸开放许可样例，尚未补齐其余 19 段授权视频和第二标注者结果，因此本文不填写外部测试数字，也不利用未来外测结果继续调整模型。
 
 # 第6章 系统设计与实现
 
@@ -313,7 +313,7 @@ PyAV 与 OpenCV 可能携带不同 FFmpeg 动态库，在同一进程导入时�
 
 ## 6.4 人工修改与分阶段缓存
 
-转写表格允许用户修改文本并重新分析。缓存键区分视频内容、时间戳、文本和编码器版本，因此只修改文本时不重新计算音频和视频。真实 M2 测试中，文本修改后的重新分析总耗时为 1.99 秒，其中文本编码 1.835 秒、缓存音频读取 0.003 秒、缓存视觉读取 0.013 秒、融合 0.036 秒，低于 15 秒验收门槛。
+转写表格允许用户修改文本并重新分析。缓存键区分视频内容、时间戳、文本和编码器版本，因此只修改文本时不重新计算音频和视频。最终双语 M2 测试中，文本修改后的重新分析总耗时为 4.03 秒，其中文本编码 3.054 秒、缓存音频读取 0.089 秒、缓存视觉读取 0.085 秒、融合 0.073 秒，且不重复运行 Whisper，低于 15 秒验收门槛。
 
 缓存目录最大 2 GiB、有效期 24 小时，写入采用临时文件加原子替换。界面提供清除按钮，真实浏览器测试验证了缓存清理、重新计算和下载行为。
 
@@ -327,15 +327,18 @@ JSON 保留完整机器可读字段，CSV 面向逐句复核，PNG 用于论文�
 
 | 检查项 | 结果 | 门槛 |
 |---|---:|---:|
+| 中文人脸样例时长 | 50.00 秒 | 30—60 秒 |
+| 中文冷缓存完整分析 | 34.55 秒 | 不超过 120 秒 |
+| 中文内容与视觉 | 8 段中文，8 段均启用视觉 | 必须 |
 | 英文无人脸样例时长 | 31.72 秒 | 30—60 秒 |
-| 冷缓存完整分析 | 19.12 秒 | 不超过 120 秒 |
-| 低内存模式峰值 | 3.94 GB（3.67 GiB） | 不超过 6.5 GiB |
+| 英文冷缓存完整分析 | 18.42 秒 | 不超过 120 秒 |
+| 英文无人脸行为 | 8 段均关闭视觉 | 必须 |
+| 双语同轮峰值 | 3.84 GB（3.58 GiB） | 不超过 6.5 GiB |
 | BIMER 进程交换操作 | 0 | 0 |
-| 文本修改后重分析 | 2.95 秒 | 不超过 15 秒 |
-| 无人脸行为 | 8 段均关闭视觉 | 必须 |
+| 文本修改后重分析 | 4.03 秒 | 不超过 15 秒 |
 | JSON/CSV/PNG | 真实浏览器下载成功 | 必须 |
 
-错误输入测试验证了文本伪装文件、超过 500 MB 文件和无音轨视频会在分析前给出明确错误。低内存模式通过逐模态懒加载和释放，将同一英文样例的峰值从 5.33 GB 降到 3.94 GB，且导出 CSV 与 PNG 的哈希保持一致。BIMER 进程自身交换操作为 0，但测试前 macOS 已处于较高全局换页压力，系统级 swap 完全不变需在干净登录环境复验。中文人脸视频的最终实机验收尚未完成，原因是缺少 30—60 秒、具有明确授权的样例；本文不以合成或未授权素材替代最终声明。
+错误输入测试验证了文本伪装文件、超过 500 MB 文件和无音轨视频会在分析前给出明确错误。最终中文样例选用美国之音中文网对作家马建的普通话直拍采访，从已标记为美国之音公有领域作品的 68.409 秒原片截取第 5—55 秒，并固定原始与派生文件哈希。验收脚本除时延和资源限制外，还检查中文字符占比与每段视觉可用性，防止仅通过语言参数强制产生假通过。BIMER 进程自身交换操作为 0，但测试前 macOS 已处于较高全局换页压力，系统级 swap 完全不变仍需在干净登录环境复验。
 
 ## 6.7 工程质量与复现
 
@@ -353,7 +356,7 @@ JSON 保留完整机器可读字段，CSV 面向逐句复核，PNG 用于论文�
 
 ## 7.2 研究局限
 
-第一，冻结编码器限制了情感语义和声学域适配能力，MELD 的 fear 与 disgust 仍很低；V4 表明文本适配具有潜力，但其证据仅来自验证集。第二，两个数据集的来源差异较大，联合训练不等于跨文化泛化。第三，质量向量只包含四项人工设计统计量，尚不能完整描述遮挡、多人说话和讽刺。第四，系统不实现说话人分离，Whisper 时间戳与数据集人工语句边界存在差异。第五，中文人脸实机验收与 20 段双人标注外测尚待授权素材补齐。第六，V4 上下文门发生饱和且原型未被选中，说明结构复杂度增加并不必然产生可归因的创新收益。
+第一，冻结编码器限制了情感语义和声学域适配能力，MELD 的 fear 与 disgust 仍很低；V4 表明文本适配具有潜力，但其证据仅来自验证集。第二，两个数据集的来源差异较大，联合训练不等于跨文化泛化。第三，质量向量只包含四项人工设计统计量，尚不能完整描述遮挡、多人说话和讽刺。第四，系统不实现说话人分离，Whisper 时间戳与数据集人工语句边界存在差异。第五，双语实机验收已完成，但 20 段双人标注外测仍仅完成一段中文正常人脸素材，外部有效性证据尚不充分。第六，V4 上下文门发生饱和且原型未被选中，说明结构复杂度增加并不必然产生可归因的创新收益。
 
 ## 7.3 未来工作
 

@@ -39,6 +39,21 @@ permission may enter the private external-evaluation set. They must not be
 committed to the public repository. Public reports contain aggregate statistics
 and de-identified failure descriptions only.
 
+### Chinese face-video defense sample
+
+The private defense package includes a 50-second excerpt from **“Ma Jian VOA
+interview 20181112”**, authored by Voice of America Chinese. The
+[Wikimedia Commons file page](https://commons.wikimedia.org/wiki/File:Ma_Jian_VOA_interview_20181112.webm)
+identifies the VOA-only work as public domain in the United States.
+
+- Original file: 68.409-second WebM, SHA-256
+  `ba891b1d4c350e7310efba8e03f5fbda86e46d02bc261da31cff89254d99a17d`.
+- Defense excerpt: seconds 5.000–55.000, transcoded to H.264/AAC without
+  changing the spoken content, SHA-256
+  `d9a8831cfa978bd9d84f4bfb52d4472effa4a0e25678d2ee1626edd7053cb78c`.
+- Use: non-commercial academic system acceptance and defense demonstration.
+  The excerpt must not be presented as endorsement by the speaker or VOA.
+
 ## Research outputs
 
 The public `results/` directory contains means, sample standard deviations,

@@ -13,13 +13,41 @@ from bimer.export import (
     export_analysis_figure,
     export_analysis_json,
 )
+from bimer.inference import TranscriptSegment
 from bimer.runtime import build_runtime
+from bimer.schema import AnalysisResult
 
 
 def _timed_analyze(analyzer, video, language):
     started = time.perf_counter()
     result = analyzer.analyze(video, language)
     return result, time.perf_counter() - started
+
+
+def transcript_segments_from_result(result: AnalysisResult) -> list[TranscriptSegment]:
+    return [
+        TranscriptSegment(
+            start_seconds=segment.start_seconds,
+            end_seconds=segment.end_seconds,
+            text=segment.text,
+        )
+        for segment in result.segments
+    ]
+
+
+def chinese_character_ratio(result: AnalysisResult) -> float:
+    text = "".join(segment.text for segment in result.segments)
+    content = [character for character in text if character.isalnum()]
+    if not content:
+        return 0.0
+    chinese = sum("\u3400" <= character <= "\u9fff" for character in content)
+    return chinese / len(content)
+
+
+def all_segments_have_vision(result: AnalysisResult) -> bool:
+    return bool(result.segments) and all(
+        segment.modality_available.get("vision", False) for segment in result.segments
+    )
 
 
 def main() -> int:
@@ -64,9 +92,9 @@ def main() -> int:
         "en",
     )
     edit_video = args.chinese_video or args.english_no_face_video
-    edit_language = "zh" if args.chinese_video is not None else "en"
-    detected, segments = analyzer.transcribe(edit_video, edit_language)
-    edited = list(segments)
+    edit_source = chinese if chinese is not None else english
+    detected = edit_source.language
+    edited = transcript_segments_from_result(edit_source)
     edited[0] = replace(edited[0], text=edited[0].text + "（人工修改）")
     edit_started = time.perf_counter()
     edited_result = analyzer.analyze_segments(
@@ -128,6 +156,8 @@ def main() -> int:
     }
     if chinese_seconds is not None:
         checks["chinese_under_120_seconds"] = chinese_seconds <= 120
+        checks["chinese_content_is_chinese"] = chinese_character_ratio(chinese) >= 0.5
+        checks["chinese_face_enables_vision"] = all_segments_have_vision(chinese)
     completed_checks_passed = all(checks.values())
     complete = chinese is not None
     payload = {
