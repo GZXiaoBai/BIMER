@@ -122,3 +122,60 @@ def test_lora_summary_applies_original_validation_gates_and_records_adapter(tmp_
     assert decision["selected"] == "lr_100"
     assert decision["candidate_configs"]["lr_100"]["adapter_sha256"] == "sha-lr_100"
     assert decision["candidate_configs"]["lr_100"]["feature_root"].endswith("lr_100/features")
+
+
+def test_lora_summary_uses_best_candidate_from_screen_decision(tmp_path):
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(
+        json.dumps({"validation": _metrics(0.60, 0.45, 0.20)}),
+        encoding="utf-8",
+    )
+    lora = tmp_path / "lora"
+    _candidate(lora, "lr_100", weighted=0.612, macro=0.46, minority=0.22)
+    _candidate(lora, "lr_200", weighted=0.605, macro=0.454, minority=0.205)
+    structure = tmp_path / "screen-decision.json"
+    structure.write_text(
+        json.dumps(
+            {
+                "decision": "trigger_lora",
+                "best_candidate": "context_only",
+                "candidate_configs": {
+                    "context_only": {
+                        "model": "adaptive_context_prototype",
+                        "prototype_loss_weight": 0.0,
+                        "use_adaptive_context_gate": True,
+                    },
+                    "prototype_only": {
+                        "model": "adaptive_context_prototype",
+                        "prototype_loss_weight": 0.1,
+                        "use_adaptive_context_gate": False,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "decision.json"
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--baseline",
+            str(baseline),
+            "--lora-root",
+            str(lora),
+            "--structure",
+            str(structure),
+            "--output",
+            str(output),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    decision = json.loads(output.read_text(encoding="utf-8"))
+    assert decision["candidate_configs"]["lr_100"]["prototype_loss_weight"] == 0.0
+    assert decision["candidate_configs"]["lr_100"]["use_adaptive_context_gate"] is True

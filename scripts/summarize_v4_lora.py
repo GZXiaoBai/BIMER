@@ -41,6 +41,20 @@ def _run_root(root: Path, tag: str) -> Path:
     return root / tag / "fusion" / MODEL / "joint" / "seed-42"
 
 
+def _base_config(structure_payload: dict[str, object]) -> dict[str, object]:
+    legacy = structure_payload.get("candidate_config")
+    if isinstance(legacy, dict):
+        return legacy
+    selected = structure_payload["best_candidate"]
+    configs = structure_payload["candidate_configs"]
+    if not isinstance(selected, str) or not isinstance(configs, dict):
+        raise ValueError("screen decision must identify a best candidate and its configurations")
+    config = configs[selected]
+    if not isinstance(config, dict):
+        raise ValueError("selected screen candidate configuration must be an object")
+    return config
+
+
 def _finite(path: Path, fields: tuple[str, ...]) -> bool:
     if not path.is_file():
         return False
@@ -102,7 +116,7 @@ def summarize(
 ) -> Path:
     baseline_metrics = json.loads(baseline.read_text(encoding="utf-8"))["validation"]
     structure_payload = json.loads(structure.read_text(encoding="utf-8"))
-    base_config = structure_payload["candidate_config"]
+    base_config = _base_config(structure_payload)
     candidates = {}
     configs = {}
     for tag, learning_rate in zip(TAGS, (1e-4, 2e-4), strict=True):
