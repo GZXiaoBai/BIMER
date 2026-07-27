@@ -47,7 +47,11 @@ The machine was already under substantial system-wide memory pressure before
 the final bilingual run. macOS global swap usage increased from 9,542.00 MB to
 10,586.31 MB. The BIMER process itself reported zero swap operations and stayed
 below the memory limit. A clean-login system-wide “swap unchanged” check
-remains pending and is not reported as passed.
+remains pending and is not reported as passed. The strict post-reboot check is
+now automated by `scripts/run_post_reboot_acceptance.sh`: it reruns the complete
+bilingual acceptance, requires initial swap usage no greater than 256 MB,
+requires zero increase and zero BIMER process swap operations, and writes
+`system-swap-acceptance.json`.
 
 ## Runtime isolation
 
@@ -68,6 +72,11 @@ the real V2 checkpoint:
 6. Click the timeline and verify video seeking.
 7. Download JSON, CSV, and PNG outputs.
 8. Clear the 24-hour feature cache.
+
+A 143.84-second real-browser backup recording of the Chinese workflow was also
+captured from the final V2 deployment and transcoded to
+`output/deliverables/BIMER-中文离线演示.mp4`. It contains no synthetic analyzer
+or prerecorded model output.
 
 The machine-readable final bilingual report records `complete: true` and
 `passed: true`. Its private evidence hashes are:
