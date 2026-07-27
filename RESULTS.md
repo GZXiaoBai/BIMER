@@ -122,6 +122,37 @@ V3 was screened only on validation data under a predeclared protocol.
 This result demonstrates that a more interpretable gate response does not by
 itself guarantee better emotion classification.
 
+## V4 exploratory result
+
+V4 was a post-hoc exploratory study conducted after the V2 confirmatory
+protocol. It first screened adaptive context gating and cross-language emotion
+prototypes. Those structural candidates failed the predeclared seed-42
+validation criteria, so the conditional XLM-R LoRA stage was activated. The
+selected LoRA learning rate was `1e-4`; audio, vision, and quality features were
+reused unchanged.
+
+Three-seed validation results for the final V4 candidate were:
+
+| Dataset | weighted-F1 | macro-F1 |
+|---|---:|---:|
+| MELD | 62.179% ± 0.834% | 47.369% ± 1.734% |
+| EmotionTalk | 66.932% ± 0.111% | 62.191% ± 0.333% |
+| Bilingual average | **64.556% ± 0.409%** | **54.780% ± 0.936%** |
+
+The candidate improved bilingual validation weighted-F1 by 2.641 percentage
+points and macro-F1 by 2.089 points relative to the frozen screen baseline.
+However, the average gain for `fear`, `disgust`, and `sadness` was 1.329 points,
+below the predeclared 1.5-point requirement. The formal stability decision was
+therefore negative. No V4 official test evaluation was run.
+
+The adaptive context gate saturated near 0.99 and its removal changed bilingual
+weighted-F1 by only about 0.034 points. The prototype stage was not selected and
+had zero weight in the formal candidate. Consequently, the observed V4 gain is
+attributed mainly to lightweight XLM-R text adaptation, not to the proposed
+context-gate or prototype mechanisms. See
+[`docs/v4_exploratory_results.md`](docs/v4_exploratory_results.md) for the full
+decision record and archive hashes.
+
 ## Claim boundary
 
 Supported:
@@ -137,7 +168,9 @@ Not claimed:
 2. universal quality-gate superiority;
 3. state-of-the-art performance;
 4. superiority to the original papers' best single-dataset systems;
-5. clinical or psychological validity.
+5. clinical or psychological validity;
+6. V4 official-test performance or support for its context-gate and prototype
+   mechanisms.
 
 Machine-readable tables and reproducible figures are under `results/` and
 `docs/figures/`.

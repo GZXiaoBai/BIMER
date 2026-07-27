@@ -14,9 +14,9 @@
 
 在模型方面，本文实现质量感知门控融合模型。模型将三种模态投影至统一空间，并为文本、语音和视频分别输入四维质量信息；不可用模态使用硬掩码，低质量模态使用连续质量特征。单句内采用跨模态 Transformer 融合，句间采用双向 GRU 建模最长 32 句的对话上下文。训练流程进一步加入逐维输入归一化、模态随机屏蔽、真实扰动视图训练和中英文均衡采样。为防止结论依赖单次运行，正式实验使用 42、123、2026 三个随机种子，报告样本标准差，并以完整对话为抽样单位进行 2,000 次配对 cluster bootstrap。
 
-实验结果表明，完整模型在 MELD 和 EmotionTalk 上的 weighted-F1 分别为 58.620%±0.830% 和 61.675%±1.423%，双语平均为 60.148%±1.124%。在相同特征和评价口径下，完整模型比 Early MLP 提高 1.493 个百分点，95% 置信区间为 [0.669, 2.200] 个百分点。消融实验显示，对话上下文和模态随机屏蔽分别带来 1.385 和 0.749 个百分点的双语收益，置信区间均不跨零。质量机制相对无门控上下文模型在干净集上的平均优势仅为 0.089 个百分点，不能证明其具有普遍收益；但在 25% 视频丢帧条件下提高 0.986 个百分点，显示出针对视频退化的局部价值。语言嵌入未得到消融支持。进一步的 V3 配对门控排序虽然能够降低受损模态权重，但未达到预先声明的分类性能门槛，因此停止训练并保留为负结果。
+实验结果表明，完整模型在 MELD 和 EmotionTalk 上的 weighted-F1 分别为 58.620%±0.830% 和 61.675%±1.423%，双语平均为 60.148%±1.124%。在相同特征和评价口径下，完整模型比 Early MLP 提高 1.493 个百分点，95% 置信区间为 [0.669, 2.200] 个百分点。消融实验显示，对话上下文和模态随机屏蔽分别带来 1.385 和 0.749 个百分点的双语收益，置信区间均不跨零。质量机制相对无门控上下文模型在干净集上的平均优势仅为 0.089 个百分点，不能证明其具有普遍收益；但在 25% 视频丢帧条件下提高 0.986 个百分点，显示出针对视频退化的局部价值。语言嵌入未得到消融支持。进一步的 V3 配对门控排序虽然能够降低受损模态权重，但未达到预先声明的分类性能门槛，因此停止训练并保留为负结果。事后探索性 V4 通过 LoRA 适配文本编码器，在三随机种子验证集上达到 64.556%±0.409% 的双语 weighted-F1 和 54.780%±0.936% 的 macro-F1；但其少数类增益为 1.329 个百分点，未达到预声明的 1.5 个百分点门槛，自适应上下文门和类别原型也未获得消融支持。本文因此未运行 V4 官方测试，正式结论与部署模型仍保持 V2。
 
-系统方面，本文实现固定部署清单、离线资产校验、MPS/CPU 回退、Whisper 子进程隔离、32/8 滑窗推理、转写编辑局部缓存、置信度与质量警告、时间线和 JSON/CSV/PNG 导出。在 MacBook Air M2 8 GB 上，31.72 秒英文无人脸视频的首次完整分析耗时 58.37 秒，峰值内存 5.28 GB、交换为 0；修改文本后的重新分析耗时 1.99 秒。结果说明，本研究虽未达到单数据集最佳性能，但形成了实验口径可信、创新边界清晰、可离线复现与演示的本科毕设系统。
+系统方面，本文实现固定部署清单、离线资产校验、MPS/CPU 回退、Whisper 子进程隔离、32/8 滑窗推理、转写编辑局部缓存、置信度与质量警告、时间线和 JSON/CSV/PNG 导出。在 MacBook Air M2 8 GB 上，31.72 秒英文无人脸视频的冷缓存完整分析耗时 19.12 秒，低内存模式峰值为 3.94 GB，BIMER 进程交换操作为 0；修改文本后的重新分析耗时 2.95 秒。由于测试前系统已处于较高的全局换页压力，系统级 swap 完全不变仍需在干净登录环境复验。结果说明，本研究虽未达到单数据集最佳性能，但形成了实验口径可信、创新边界清晰、可离线复现与演示的本科毕设系统。
 
 关键词：多模态情感识别；对话上下文；质量感知；中英文；缺失模态；鲁棒性
 
@@ -26,9 +26,9 @@ Dialogue emotion recognition predicts an utterance-level emotional state from te
 
 The official splits of MELD and EmotionTalk are preserved. Their labels are aligned to neutral, joy, sadness, anger, surprise, fear, and disgust. The audit covers 32,958 utterances and all cached feature records. EmotionTalk speaker tracks are reconstructed into 742 complete dialogue contexts through an independent context_id without changing sample_id. Text, audio, and visual representations are extracted with frozen XLM-R, Wav2Vec2 XLS-R 300M, and YuNet plus R3D-18 encoders.
 
-The proposed V2 model combines four-dimensional quality signals for each modality, masked quality gates, a cross-modal Transformer, and a bidirectional GRU over dialogue context. Training uses input normalization, modality dropout, real corrupted views, and balanced bilingual sampling. Formal experiments use three random seeds and 2,000 paired cluster-bootstrap replicates over complete dialogues. The model obtains weighted-F1 scores of 58.620%±0.830% on MELD and 61.675%±1.423% on EmotionTalk, with a bilingual average of 60.148%±1.124%. It improves over Early MLP by 1.493 percentage points, with a 95% confidence interval of [0.669, 2.200]. Ablations support dialogue context and modality dropout. Quality-aware gating shows a targeted benefit under video frame loss but no universal clean-set advantage; language embeddings are not supported. A V3 ranking objective changed corrupted-modality gates in the intended direction but failed the predeclared classification threshold and was stopped as a negative result.
+The proposed V2 model combines four-dimensional quality signals for each modality, masked quality gates, a cross-modal Transformer, and a bidirectional GRU over dialogue context. Training uses input normalization, modality dropout, real corrupted views, and balanced bilingual sampling. Formal experiments use three random seeds and 2,000 paired cluster-bootstrap replicates over complete dialogues. The model obtains weighted-F1 scores of 58.620%±0.830% on MELD and 61.675%±1.423% on EmotionTalk, with a bilingual average of 60.148%±1.124%. It improves over Early MLP by 1.493 percentage points, with a 95% confidence interval of [0.669, 2.200]. Ablations support dialogue context and modality dropout. Quality-aware gating shows a targeted benefit under video frame loss but no universal clean-set advantage; language embeddings are not supported. A V3 ranking objective changed corrupted-modality gates in the intended direction but failed the predeclared classification threshold and was stopped as a negative result. A post-hoc V4 study adapted XLM-R with LoRA and reached a three-seed bilingual validation weighted-F1 of 64.556%±0.409% and macro-F1 of 54.780%±0.936%. It nevertheless missed the predeclared minority-class threshold, while adaptive context gating and emotion prototypes were unsupported by ablation. V4 was therefore not evaluated on the official test sets and did not replace V2.
 
-The final system provides an offline deployment manifest, asset verification, MPS/CPU fallback, isolated Whisper transcription, sliding-window inference, partial cache invalidation after transcript editing, uncertainty and quality warnings, an interactive timeline, and JSON/CSV/PNG export. On an 8 GB MacBook Air M2, a 31.72-second English no-face video is analyzed in 58.37 seconds with a 5.28 GB peak memory footprint and zero swaps; transcript-only reanalysis takes 1.99 seconds. The project does not claim state-of-the-art performance, but provides a reproducible and evidence-bounded bilingual multimodal research system suitable for an undergraduate thesis.
+The final system provides an offline deployment manifest, asset verification, MPS/CPU fallback, isolated Whisper transcription, sliding-window inference, partial cache invalidation after transcript editing, uncertainty and quality warnings, an interactive timeline, and JSON/CSV/PNG export. On an 8 GB MacBook Air M2, a cold-cache analysis of a 31.72-second English no-face video takes 19.12 seconds in low-memory mode with a 3.94 GB peak footprint and zero BIMER-process swap operations; transcript-only reanalysis takes 2.95 seconds. Because the machine was already under substantial system-wide memory pressure, an unchanged global swap level still requires a clean-login retest. The project does not claim state-of-the-art performance, but provides a reproducible and evidence-bounded bilingual multimodal research system suitable for an undergraduate thesis.
 
 Keywords: multimodal emotion recognition; dialogue context; quality awareness; bilingual learning; missing modalities; robustness
 
@@ -69,7 +69,7 @@ Keywords: multimodal emotion recognition; dialogue context; quality awareness; b
 
 ## 1.5 论文结构
 
-第2章介绍多模态情感识别、预训练编码器、融合与上下文建模、鲁棒性和评价方法。第3章说明数据集、标签对齐、上下文重建、预处理与缓存。第4章给出质量感知融合模型和训练协议。第5章分析主结果、消融、逐类性能、鲁棒性与 V3 负结果。第6章介绍系统架构、部署、交互和 M2 验收。第7章总结研究结论、局限与未来工作。
+第2章介绍多模态情感识别、预训练编码器、融合与上下文建模、鲁棒性和评价方法。第3章说明数据集、标签对齐、上下文重建、预处理与缓存。第4章给出质量感知融合模型和训练协议。第5章分析主结果、消融、逐类性能、鲁棒性以及 V3、V4 探索性结果。第6章介绍系统架构、部署、交互和 M2 验收。第7章总结研究结论、局限与未来工作。
 
 # 第2章 相关技术与研究基础
 
@@ -199,7 +199,7 @@ BiGRU 的作用是捕捉情感惯性、事件响应和相邻语句转折。例�
 
 所有模型使用相同的官方划分、冻结特征、标签顺序和归一化口径。正式对比包括 Early MLP、Early Context、无门控上下文模型和完整 Quality LAGF。消融依次去除语言嵌入、门控、上下文、质量输入、模态随机屏蔽和扰动视图训练。每个正式模型和消融条件均运行 42、123、2026 三个随机种子。
 
-为确保链路正确，每种模型先在 16 个样本上进行过拟合测试。自动测试还覆盖特征维度、上下文掩码、窗口合并、缺失模态、缓存失效、校准和导出。工程收口后共有 352 项测试通过，总体语句和分支覆盖率为 80.98%。
+为确保链路正确，每种模型先在 16 个样本上进行过拟合测试。自动测试还覆盖特征维度、上下文掩码、窗口合并、缺失模态、缓存失效、校准和导出。工程收口后共有 402 项测试通过，总体语句和分支覆盖率为 81.13%。
 
 ## 5.2 主结果
 
@@ -269,7 +269,23 @@ V3 先比较类别损失。Balanced Softmax 的双语 macro-F1 只提高 0.154 �
 
 按照预注册协议，没有候选通过时停止 V3，不运行三种子正式训练和官方测试。该负结果提示：门控权重符合直觉不代表分类边界同步改善，额外约束甚至可能把容量用于“解释门控”而不是识别情感。
 
-## 5.7 结果有效性与威胁
+## 5.7 V4 探索性文本适配与结构负结果
+
+V4 在 V2 确认性实验完成后启动，属于事后探索性研究。第一阶段比较自适应上下文门和跨语言类别原型。最佳的仅上下文门候选相对筛选基线只提高 0.412 个百分点的双语 weighted-F1，同时使 macro-F1 下降 0.805 个百分点、三个目标少数类平均 F1 下降 2.081 个百分点，因此没有通过 seed 42 筛选，类别原型权重也固定为 0。
+
+按照预声明的条件触发规则，第二阶段只对 XLM-R 的 query/value 层进行 LoRA 适配。学习率 `1e-4` 的候选在筛选中同时改善 weighted-F1、macro-F1 和少数类 F1，随后进入三随机种子正式验证。其结果如下。
+
+| 数据集 | weighted-F1 | macro-F1 |
+|---|---:|---:|
+| MELD | 62.179%±0.834% | 47.369%±1.734% |
+| EmotionTalk | 66.932%±0.111% | 62.191%±0.333% |
+| 双语平均 | 64.556%±0.409% | 54.780%±0.936% |
+
+相对冻结的筛选基线，V4 的双语 weighted-F1 和 macro-F1 分别提高 2.641 和 2.089 个百分点，两个单数据集也均未退化；但 `fear、disgust、sadness` 平均 F1 只提高 1.329 个百分点，距离预声明的 1.5 个百分点门槛还差 0.171。正式稳定性判定因此为失败。
+
+进一步消融显示，自适应上下文门均值接近 0.99，基本退化为始终使用上下文；去除该门后 weighted-F1 只变化约 0.034 个百分点。原型结构没有通过前期筛选，不能形成有效消融证据。由此可见，V4 的验证集收益主要来自 LoRA 文本域适配，而不是计划中的上下文门或原型创新。本文依照冻结规则停止 V4，不访问官方测试集，不以该结果替换 V2 确认性结果。这个结果同时说明：较高的探索性验证分数不等于新结构假设获得支持。
+
+## 5.8 结果有效性与威胁
 
 内部有效性方面，本文保留官方划分、统一归一化口径并禁止测试集调参；三随机种子和配对 cluster bootstrap 降低了单次运行与对话内相关性带来的误判。构念有效性方面，七类标签仍是对复杂情感的简化，影视表演和演员控制场景也不等于自然交互。
 
@@ -312,14 +328,14 @@ JSON 保留完整机器可读字段，CSV 面向逐句复核，PNG 用于论文�
 | 检查项 | 结果 | 门槛 |
 |---|---:|---:|
 | 英文无人脸样例时长 | 31.72 秒 | 30—60 秒 |
-| 首次完整分析 | 58.37 秒 | 不超过 120 秒 |
-| 峰值内存 | 5.28 GB | 不超过 6.5 GB |
-| 交换操作 | 0 | 0 |
-| 文本修改后重分析 | 1.99 秒 | 不超过 15 秒 |
+| 冷缓存完整分析 | 19.12 秒 | 不超过 120 秒 |
+| 低内存模式峰值 | 3.94 GB（3.67 GiB） | 不超过 6.5 GiB |
+| BIMER 进程交换操作 | 0 | 0 |
+| 文本修改后重分析 | 2.95 秒 | 不超过 15 秒 |
 | 无人脸行为 | 8 段均关闭视觉 | 必须 |
 | JSON/CSV/PNG | 真实浏览器下载成功 | 必须 |
 
-错误输入测试验证了文本伪装文件、超过 500 MB 文件和无音轨视频会在分析前给出明确错误。中文人脸视频的最终实机验收尚未完成，原因是缺少 30—60 秒、具有明确授权的样例；本文不以合成或未授权素材替代最终声明。
+错误输入测试验证了文本伪装文件、超过 500 MB 文件和无音轨视频会在分析前给出明确错误。低内存模式通过逐模态懒加载和释放，将同一英文样例的峰值从 5.33 GB 降到 3.94 GB，且导出 CSV 与 PNG 的哈希保持一致。BIMER 进程自身交换操作为 0，但测试前 macOS 已处于较高全局换页压力，系统级 swap 完全不变需在干净登录环境复验。中文人脸视频的最终实机验收尚未完成，原因是缺少 30—60 秒、具有明确授权的样例；本文不以合成或未授权素材替代最终声明。
 
 ## 6.7 工程质量与复现
 
@@ -333,15 +349,15 @@ JSON 保留完整机器可读字段，CSV 面向逐句复核，PNG 用于论文�
 
 本文围绕中英文多模态对话情感识别完成了数据、模型、统计与系统四个层面的工作。数据层面统一 MELD 与 EmotionTalk 七类标签并修复中文上下文分组；模型层面实现质量信号、跨模态 Transformer 和 BiGRU 上下文；实验层面建立三随机种子、配对对话 bootstrap、消融与退化鲁棒性证据；系统层面完成离线部署、自动切句、滑窗、缓存、质量警告、时间线和导出。
 
-正式结果表明，完整模型双语平均 weighted-F1 为 60.148%±1.124%，显著高于 Early MLP。上下文和模态随机屏蔽得到消融支持，质量机制在视频丢帧场景具有针对性收益。语言嵌入、普遍门控收益和 V3 排序监督没有得到支持，本文将其作为局限和负结果报告。
+正式结果表明，完整模型双语平均 weighted-F1 为 60.148%±1.124%，显著高于 Early MLP。上下文和模态随机屏蔽得到消融支持，质量机制在视频丢帧场景具有针对性收益。语言嵌入、普遍门控收益和 V3 排序监督没有得到支持，本文将其作为局限和负结果报告。V4 的 LoRA 文本适配在验证集上取得明显性能提升，但没有通过全部少数类稳定性门槛；同时，自适应上下文门和类别原型缺少消融支持。因此 V4 只作为探索性分析，不改变 V2 的确认性主结果和系统部署决策。
 
 ## 7.2 研究局限
 
-第一，冻结编码器限制了情感语义和声学域适配能力，MELD 的 fear 与 disgust 仍很低。第二，两个数据集的来源差异较大，联合训练不等于跨文化泛化。第三，质量向量只包含四项人工设计统计量，尚不能完整描述遮挡、多人说话和讽刺。第四，系统不实现说话人分离，Whisper 时间戳与数据集人工语句边界存在差异。第五，中文人脸实机验收与 20 段双人标注外测尚待授权素材补齐。
+第一，冻结编码器限制了情感语义和声学域适配能力，MELD 的 fear 与 disgust 仍很低；V4 表明文本适配具有潜力，但其证据仅来自验证集。第二，两个数据集的来源差异较大，联合训练不等于跨文化泛化。第三，质量向量只包含四项人工设计统计量，尚不能完整描述遮挡、多人说话和讽刺。第四，系统不实现说话人分离，Whisper 时间戳与数据集人工语句边界存在差异。第五，中文人脸实机验收与 20 段双人标注外测尚待授权素材补齐。第六，V4 上下文门发生饱和且原型未被选中，说明结构复杂度增加并不必然产生可归因的创新收益。
 
 ## 7.3 未来工作
 
-未来可在不改变评价口径的前提下探索三方面改进。一是对少数类采用更稳健的表示学习或数据增强，但必须同时观察 macro-F1 和 weighted-F1。二是引入说话人识别或显式参与者状态，扩展当前只按对话序列建模的 BiGRU。三是以更丰富的自监督质量预测替代人工质量向量，并研究“门控可解释性”和“分类收益”之间的关系。
+未来可在不改变评价口径的前提下探索三方面改进。一是对少数类采用更稳健的表示学习或数据增强，并将轻量文本域适配纳入全新预注册实验，但必须同时观察 macro-F1 和 weighted-F1。二是引入说话人识别或显式参与者状态，扩展当前只按对话序列建模的 BiGRU，并用正则化避免自适应上下文门饱和。三是以更丰富的自监督质量预测替代人工质量向量，并研究“门控可解释性”和“分类收益”之间的关系。
 
 工程上可进一步进行模型量化、编码器按需加载和跨平台打包；研究上应扩大自然场景、口音、年龄与文化覆盖，并由多名标注者报告一致性。任何扩展都应继续保留官方划分、验证集冻结和失败结果公开的原则。
 

@@ -76,7 +76,7 @@ python scripts/fit_v3_calibration.py \
   --figure artifacts/calibration/v3-reliability.png
 ```
 
-外部视频操作见 `docs/v3_external_test_protocol.md`。M2 最终验收使用 `scripts/run_m2_acceptance.sh`，强制检查首次推理 120 秒、文本修改 15 秒、峰值 6.5 GiB、交换不增长、无人脸关闭视觉以及 JSON/CSV/PNG 导出。
+外部视频操作见 `docs/external_test_protocol.md`。M2 最终验收使用 `scripts/run_m2_acceptance.sh`，强制检查首次推理 120 秒、文本修改 15 秒、峰值 6.5 GiB、交换不增长、无人脸关闭视觉以及 JSON/CSV/PNG 导出。
 
 ## 6. 成本和归档
 

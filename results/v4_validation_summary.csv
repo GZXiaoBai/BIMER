@@ -1,0 +1,10 @@
+evidence_scope,variant,dataset,seeds,weighted_f1_mean,weighted_f1_std,macro_f1_mean,macro_f1_std,official_test_used
+validation_only,full,meld,"42|123|2026",0.6217933963,0.0083401042,0.4736918906,0.0173369361,false
+validation_only,full,emotiontalk,"42|123|2026",0.6693245624,0.0011116577,0.6219115722,0.0033270935,false
+validation_only,full,bilingual_average,"42|123|2026",0.6455589793,0.0040885484,0.5478017314,0.0093556406,false
+validation_only,no_context_gate,meld,"42|123|2026",0.6218685347,0.0091785849,0.4735606664,0.0155657269,false
+validation_only,no_context_gate,emotiontalk,"42|123|2026",0.6685762443,0.0017726228,0.6223437109,0.0031041009,false
+validation_only,no_context_gate,bilingual_average,"42|123|2026",0.6452223895,0.0053610900,0.5479521887,0.0081486538,false
+validation_only,ensemble,meld,"42|123|2026",0.6302434110,,0.4710380370,,false
+validation_only,ensemble,emotiontalk,"42|123|2026",0.6745773832,,0.6326151456,,false
+validation_only,ensemble,bilingual_average,"42|123|2026",0.6524103971,,0.5518265913,,false
