@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import torch
 from torch import Tensor, nn
@@ -11,6 +12,11 @@ from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 class FusionOutput:
     logits: Tensor
     gates: Tensor
+    context_gates: Tensor | None = None
+    representations: Tensor | None = None
+    prototype_logits: Tensor | None = None
+    local_logits: Tensor | None = None
+    fixed_context_logits: Tensor | None = None
 
 
 def apply_modality_dropout(mask: Tensor, probability: float) -> Tensor:
@@ -29,9 +35,8 @@ def apply_modality_dropout(mask: Tensor, probability: float) -> Tensor:
     for row_index in range(flattened_available.shape[0]):
         candidates = torch.nonzero(flattened_available[row_index], as_tuple=False).flatten()
         if selected_rows[row_index] and candidates.numel() > 1:
-            selected = candidates[
-                torch.randint(candidates.numel(), (1,), device=mask.device).item()
-            ]
+            selected_index = int(torch.randint(candidates.numel(), (1,), device=mask.device).item())
+            selected = candidates[selected_index]
             flattened_kept[row_index, selected] = False
     return kept
 
@@ -105,7 +110,7 @@ class LanguageAwareGatedFusion(nn.Module):
             bidirectional=True,
         )
         classifier_dim = context_hidden_dim * 2 if use_context else d_model
-        self.classifier = nn.Sequential(
+        self.classifier: nn.Module = nn.Sequential(
             nn.Dropout(dropout),
             nn.Linear(classifier_dim, num_classes),
         )
@@ -226,5 +231,5 @@ class LanguageAwareGatedFusion(nn.Module):
 
 
 class QualityAwareLanguageGatedFusion(LanguageAwareGatedFusion):
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(quality_dim=4, **kwargs)

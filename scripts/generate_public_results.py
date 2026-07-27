@@ -97,6 +97,52 @@ def select_public_per_class(frame: pd.DataFrame) -> pd.DataFrame:
     return selected.sort_values(["dataset", "label"]).reset_index(drop=True)
 
 
+def mean_confusion_matrix(
+    prediction_root: Path,
+    dataset: str,
+    *,
+    seeds: tuple[int, ...] = (42, 123, 2026),
+    class_count: int = 7,
+) -> np.ndarray:
+    matrices: list[np.ndarray] = []
+    reference_ids: np.ndarray | None = None
+    reference_truth: np.ndarray | None = None
+    for seed in seeds:
+        path = (
+            prediction_root
+            / "quality_lagf"
+            / "quality_lagf"
+            / "joint"
+            / f"seed-{seed}"
+            / "predictions"
+            / f"{dataset}.npz"
+        )
+        with np.load(path, allow_pickle=False) as payload:
+            sample_ids = payload["sample_ids"].astype(str)
+            truth = payload["truth"].astype(np.int64)
+            prediction = payload["prediction"].astype(np.int64)
+        if reference_ids is None:
+            reference_ids = sample_ids
+            reference_truth = truth
+        elif not np.array_equal(sample_ids, reference_ids) or not np.array_equal(
+            truth,
+            reference_truth,
+        ):
+            raise ValueError(f"{dataset} seed predictions are not sample-aligned")
+        matrix = np.zeros((class_count, class_count), dtype=np.float64)
+        np.add.at(matrix, (truth, prediction), 1)
+        support = matrix.sum(axis=1, keepdims=True)
+        matrices.append(
+            np.divide(
+                matrix,
+                support,
+                out=np.zeros_like(matrix),
+                where=support > 0,
+            )
+        )
+    return np.stack(matrices).mean(axis=0)
+
+
 def _style() -> None:
     plt.rcParams.update(
         {
@@ -250,12 +296,57 @@ def plot_per_class(frame: pd.DataFrame, output: Path) -> None:
     _save(figure, output)
 
 
+def plot_confusion_matrices(
+    prediction_root: Path,
+    output: Path,
+    *,
+    labels: tuple[str, ...] = (
+        "neutral",
+        "joy",
+        "sadness",
+        "anger",
+        "surprise",
+        "fear",
+        "disgust",
+    ),
+) -> None:
+    figure, axes = plt.subplots(1, 2, figsize=(14, 5.8), constrained_layout=True)
+    for axis, dataset in zip(axes, ("meld", "emotiontalk"), strict=True):
+        matrix = mean_confusion_matrix(
+            prediction_root,
+            dataset,
+            class_count=len(labels),
+        )
+        image = axis.imshow(matrix * 100, cmap="Blues", vmin=0, vmax=100)
+        axis.set_title(f"{DATASET_NAMES[dataset]} row-normalized confusion")
+        axis.set_xlabel("Predicted label")
+        axis.set_ylabel("True label")
+        axis.set_xticks(np.arange(len(labels)), labels, rotation=35, ha="right")
+        axis.set_yticks(np.arange(len(labels)), labels)
+        for row in range(len(labels)):
+            for column in range(len(labels)):
+                value = matrix[row, column] * 100
+                if value >= 3:
+                    axis.text(
+                        column,
+                        row,
+                        f"{value:.0f}",
+                        ha="center",
+                        va="center",
+                        color="white" if value >= 55 else "#0f172a",
+                        fontsize=8,
+                    )
+    figure.colorbar(image, ax=axes, label="Share of true class (%)", shrink=0.82)
+    _save(figure, output)
+
+
 def export_public_results(
     *,
     analysis_root: Path,
     v3_screen_root: Path,
     results_root: Path,
     figures_root: Path,
+    formal_prediction_root: Path | None = None,
 ) -> None:
     formal_root = analysis_root / "v2-formal-ablations"
     robustness_root = analysis_root / "v2-robustness"
@@ -299,6 +390,11 @@ def export_public_results(
     plot_ablation(ablations, figures_root / "ablation_effects.png")
     plot_robustness(robustness, figures_root / "robustness_comparison.png")
     plot_per_class(per_class, figures_root / "per_class_f1.png")
+    if formal_prediction_root is not None:
+        plot_confusion_matrices(
+            formal_prediction_root,
+            figures_root / "confusion_matrices.png",
+        )
 
 
 def main() -> int:
@@ -311,12 +407,14 @@ def main() -> int:
     )
     parser.add_argument("--results-root", type=Path, default=Path("results"))
     parser.add_argument("--figures-root", type=Path, default=Path("docs/figures"))
+    parser.add_argument("--formal-prediction-root", type=Path)
     args = parser.parse_args()
     export_public_results(
         analysis_root=args.analysis_root,
         v3_screen_root=args.v3_screen_root,
         results_root=args.results_root,
         figures_root=args.figures_root,
+        formal_prediction_root=args.formal_prediction_root,
     )
     return 0
 

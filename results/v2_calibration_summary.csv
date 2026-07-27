@@ -1,0 +1,3 @@
+language,temperature,uncertainty_threshold,ece_before,ece_after,brier_before,brier_after,nll_before,nll_after,accuracy
+English,1.192955,0.45,0.065483,0.039233,0.559257,0.552246,1.181295,1.165293,0.592426
+Chinese,1.391147,0.55,0.117284,0.035138,0.472789,0.452325,0.936664,0.882238,0.665618

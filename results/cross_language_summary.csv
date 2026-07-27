@@ -1,0 +1,5 @@
+train_dataset,test_dataset,evaluation_type,seeds,weighted_f1_mean,weighted_f1_std,macro_f1_mean,macro_f1_std,accuracy_mean,accuracy_std
+meld,meld,source_language,3,0.587152,0.003385,0.398236,0.006308,0.584547,0.001966
+meld,emotiontalk,zero_shot_en_to_zh,3,0.201642,0.071532,0.153675,0.074318,0.213928,0.064826
+emotiontalk,emotiontalk,source_language,3,0.587314,0.019836,0.487037,0.036654,0.593226,0.010437
+emotiontalk,meld,zero_shot_zh_to_en,3,0.094926,0.057672,0.080763,0.045247,0.135377,0.036399

@@ -13,14 +13,19 @@ from bimer.calibration import apply_temperature, fit_calibration_profile
 
 def _load(directory: Path):
     rows = []
-    for dataset in ("meld", "emotiontalk"):
+    for dataset, default_language in (("meld", "en"), ("emotiontalk", "zh")):
         path = directory / f"{dataset}.npz"
         with np.load(path, allow_pickle=False) as payload:
+            truth = payload["truth"].astype(np.int64)
             rows.append(
                 (
                     payload["probabilities"].astype(np.float64),
-                    payload["truth"].astype(np.int64),
-                    payload["languages"].astype(str),
+                    truth,
+                    (
+                        payload["languages"].astype(str)
+                        if "languages" in payload.files
+                        else np.full(len(truth), default_language)
+                    ),
                 )
             )
     return tuple(np.concatenate(values) for values in zip(*rows, strict=True))

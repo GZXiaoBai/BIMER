@@ -12,7 +12,7 @@ from torch.utils.data import Sampler
 
 from .batching import DialogueExample, MultimodalBatch
 from .batching import collate_dialogues as collate_dialogues
-from .losses import masked_classification_loss
+from .losses import PrototypeContrastiveLoss, masked_classification_loss
 from .metrics import classification_metrics
 
 if TYPE_CHECKING:
@@ -75,6 +75,7 @@ def train_epoch(
     corrupted_classification_weight: float = 0.5,
     gate_ranking_weight: float = 0.0,
     gate_ranking_margin: float = 0.10,
+    prototype_loss_weight: float = 0.0,
 ) -> float:
     return _train_epoch_report(
         model,
@@ -89,6 +90,7 @@ def train_epoch(
         corrupted_classification_weight=corrupted_classification_weight,
         gate_ranking_weight=gate_ranking_weight,
         gate_ranking_margin=gate_ranking_margin,
+        prototype_loss_weight=prototype_loss_weight,
     ).loss
 
 
@@ -99,6 +101,7 @@ class TrainEpochReport:
     clean_classification_loss: float
     corrupted_classification_loss: float
     gate_ranking_loss: float
+    prototype_loss: float
 
 
 def _train_epoch_report(
@@ -115,16 +118,18 @@ def _train_epoch_report(
     corrupted_classification_weight: float = 0.5,
     gate_ranking_weight: float = 0.0,
     gate_ranking_margin: float = 0.10,
+    prototype_loss_weight: float = 0.0,
 ) -> TrainEpochReport:
     from .paired_training import gate_ranking_loss
 
-    if corrupted_classification_weight < 0 or gate_ranking_weight < 0:
-        raise ValueError("paired loss weights must be non-negative")
+    if corrupted_classification_weight < 0 or gate_ranking_weight < 0 or prototype_loss_weight < 0:
+        raise ValueError("training loss weights must be non-negative")
     model.train()
     losses: list[float] = []
     clean_losses: list[float] = []
     corrupted_losses: list[float] = []
     ranking_losses: list[float] = []
+    prototype_losses: list[float] = []
     gradient_norms: list[float] = []
     if class_weights is not None:
         class_weights = class_weights.to(device)
@@ -160,6 +165,23 @@ def _train_epoch_report(
             focal_gamma=focal_gamma,
         )
         clean_losses.append(float(loss.detach().cpu()))
+        if prototype_loss_weight > 0:
+            fusion_model = getattr(model, "model", model)
+            prototypes = getattr(fusion_model, "prototypes", None)
+            if output.representations is None or prototypes is None:
+                raise ValueError(
+                    "prototype_loss_weight requires model representations and prototypes"
+                )
+            prototype_loss = PrototypeContrastiveLoss(
+                temperature=float(getattr(fusion_model, "prototype_temperature", 0.07))
+            )(
+                output.representations,
+                prototypes,
+                batch.labels,
+                batch.attention_mask,
+            )
+            loss = loss + prototype_loss_weight * prototype_loss
+            prototype_losses.append(float(prototype_loss.detach().cpu()))
         raw_pair = next_pair()
         if raw_pair is not None:
             pair = raw_pair.to(device)
@@ -217,6 +239,7 @@ def _train_epoch_report(
             float(np.mean(corrupted_losses)) if corrupted_losses else 0.0
         ),
         gate_ranking_loss=(float(np.mean(ranking_losses)) if ranking_losses else 0.0),
+        prototype_loss=(float(np.mean(prototype_losses)) if prototype_losses else 0.0),
     )
 
 
@@ -230,6 +253,12 @@ class EvaluationReport:
     modality_quality: np.ndarray
     modality_available: np.ndarray
     sample_ids: tuple[str, ...]
+    context_lengths: np.ndarray
+    context_gates: np.ndarray | None
+    prototype_logits: np.ndarray | None
+    representations: np.ndarray | None
+    local_prediction: np.ndarray | None
+    fixed_context_prediction: np.ndarray | None
 
 
 @torch.no_grad()
@@ -247,6 +276,12 @@ def evaluate_batches(
     gates: list[np.ndarray] = []
     modality_quality: list[np.ndarray] = []
     modality_available: list[np.ndarray] = []
+    context_lengths: list[int] = []
+    context_gates: list[np.ndarray] = []
+    prototype_logits: list[np.ndarray] = []
+    representations: list[np.ndarray] = []
+    local_prediction: list[np.ndarray] = []
+    fixed_context_prediction: list[np.ndarray] = []
     sample_ids: list[str] = []
     for raw_batch in batches:
         batch = raw_batch.to(device)
@@ -259,6 +294,20 @@ def evaluate_batches(
         gates.append(output.gates[active].cpu().numpy())
         modality_quality.append(batch.modality_quality[active].cpu().numpy())
         modality_available.append(batch.modality_mask[active].cpu().numpy())
+        for row_length in batch.attention_mask.sum(dim=1).cpu().tolist():
+            context_lengths.extend([int(row_length)] * int(row_length))
+        if output.context_gates is not None:
+            context_gates.append(output.context_gates[active].cpu().numpy())
+        if output.prototype_logits is not None:
+            prototype_logits.append(output.prototype_logits[active].cpu().numpy())
+        if output.representations is not None:
+            representations.append(output.representations[active].cpu().numpy())
+        if output.local_logits is not None:
+            local_prediction.append(output.local_logits[active].argmax(dim=-1).cpu().numpy())
+        if output.fixed_context_logits is not None:
+            fixed_context_prediction.append(
+                output.fixed_context_logits[active].argmax(dim=-1).cpu().numpy()
+            )
         sample_ids.extend(sample_id for row in batch.sample_ids for sample_id in row)
     if not truth:
         raise ValueError("evaluation batches are empty")
@@ -279,6 +328,14 @@ def evaluate_batches(
         modality_quality=np.concatenate(modality_quality),
         modality_available=np.concatenate(modality_available),
         sample_ids=tuple(sample_ids),
+        context_lengths=np.asarray(context_lengths, dtype=np.int64),
+        context_gates=np.concatenate(context_gates) if context_gates else None,
+        prototype_logits=np.concatenate(prototype_logits) if prototype_logits else None,
+        representations=np.concatenate(representations) if representations else None,
+        local_prediction=np.concatenate(local_prediction) if local_prediction else None,
+        fixed_context_prediction=(
+            np.concatenate(fixed_context_prediction) if fixed_context_prediction else None
+        ),
     )
 
 
@@ -308,6 +365,7 @@ class FitConfig:
     corrupted_classification_weight: float = 0.5
     gate_ranking_weight: float = 0.0
     gate_ranking_margin: float = 0.10
+    prototype_loss_weight: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -323,6 +381,7 @@ class EpochSummary:
     clean_classification_loss: float
     corrupted_classification_loss: float
     gate_ranking_loss: float
+    prototype_loss: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -384,6 +443,7 @@ def fit_model(
             corrupted_classification_weight=config.corrupted_classification_weight,
             gate_ranking_weight=config.gate_ranking_weight,
             gate_ranking_margin=config.gate_ranking_margin,
+            prototype_loss_weight=config.prototype_loss_weight,
         )
         validation: dict[str, dict[str, object]] = {}
         prediction_histograms: dict[str, tuple[int, ...]] = {}
@@ -415,6 +475,7 @@ def fit_model(
                 clean_classification_loss=train_report.clean_classification_loss,
                 corrupted_classification_loss=(train_report.corrupted_classification_loss),
                 gate_ranking_loss=train_report.gate_ranking_loss,
+                prototype_loss=train_report.prototype_loss,
             )
         )
         if score > best_score:

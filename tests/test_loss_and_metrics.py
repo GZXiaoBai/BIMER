@@ -3,6 +3,7 @@ import pytest
 import torch
 
 from bimer.losses import (
+    PrototypeContrastiveLoss,
     masked_classification_loss,
     masked_weighted_cross_entropy,
     sqrt_inverse_class_weights,
@@ -99,6 +100,48 @@ def test_balanced_softmax_rejects_missing_or_zero_class_counts():
             loss_name="balanced_softmax",
             class_counts=torch.tensor([1.0, 0.0]),
         )
+
+
+def test_prototype_contrastive_loss_prefers_the_correct_class_prototype():
+    loss_fn = PrototypeContrastiveLoss(temperature=0.07)
+    prototypes = torch.tensor(
+        [[1.0, 0.0], [0.0, 1.0]],
+        requires_grad=True,
+    )
+    labels = torch.tensor([[0, 1]])
+    mask = torch.tensor([[True, True]])
+    aligned = torch.tensor(
+        [[[1.0, 0.0], [0.0, 1.0]]],
+        requires_grad=True,
+    )
+    swapped = torch.tensor(
+        [[[0.0, 1.0], [1.0, 0.0]]],
+        requires_grad=True,
+    )
+
+    aligned_loss = loss_fn(aligned, prototypes, labels, mask)
+    swapped_loss = loss_fn(swapped, prototypes, labels, mask)
+
+    assert aligned_loss < swapped_loss
+    aligned_loss.backward()
+    assert aligned.grad is not None
+    assert prototypes.grad is not None
+    assert torch.isfinite(aligned.grad).all()
+    assert torch.isfinite(prototypes.grad).all()
+
+
+def test_prototype_contrastive_loss_ignores_padding():
+    loss_fn = PrototypeContrastiveLoss(temperature=0.07)
+    prototypes = torch.eye(2)
+    labels = torch.tensor([[0, 1]])
+    mask = torch.tensor([[True, False]])
+    first = torch.tensor([[[1.0, 0.0], [0.0, 1.0]]])
+    second = torch.tensor([[[1.0, 0.0], [100.0, -100.0]]])
+
+    torch.testing.assert_close(
+        loss_fn(first, prototypes, labels, mask),
+        loss_fn(second, prototypes, labels, mask),
+    )
 
 
 def test_classification_metrics_return_required_report_fields():

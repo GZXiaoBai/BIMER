@@ -89,6 +89,36 @@ def test_train_cli_exposes_v3_classification_loss_options():
     assert args.gate_ranking_weight == 0.1
 
 
+def test_train_cli_exposes_v4_context_and_prototype_options():
+    args = build_parser().parse_args(
+        [
+            "train",
+            "--manifest",
+            "manifest.jsonl",
+            "--features",
+            "features",
+            "--output",
+            "results",
+            "--model",
+            "adaptive_context_prototype",
+            "--prototype-loss-weight",
+            "0.1",
+            "--prototype-temperature",
+            "0.07",
+            "--context-gate-override",
+            "1",
+            "--v4-screen",
+            "--skip-test",
+        ]
+    )
+
+    assert args.model == "adaptive_context_prototype"
+    assert args.prototype_loss_weight == 0.1
+    assert args.prototype_temperature == 0.07
+    assert args.context_gate_override == 1.0
+    assert args.v4_screen is True
+
+
 def test_feature_stats_command_writes_report(tmp_path, monkeypatch, capsys):
     records = make_cli_records(2)
     store = FeatureStore(tmp_path / "features")

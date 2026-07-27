@@ -14,11 +14,22 @@ PRIVATE_ASSET_PATHS = (
     Path(".venv"),
     Path("artifacts/deployment/v2-quality-lagf-seed42"),
     Path("artifacts/models"),
-    Path("artifacts/demo"),
+    Path("artifacts/demo/en-noface.mp4"),
+    Path("artifacts/demo/zh-face-cao-dewang-voa-50s.mp4"),
     Path("artifacts/analysis/m2-smoke-en.json"),
     Path("artifacts/analysis/v2-formal-ablations"),
     Path("artifacts/analysis/v2-robustness"),
+    Path("artifacts/analysis/v4-exploratory"),
+    Path("artifacts/acceptance/m2-v2-english-low-memory-20260727"),
+    Path("artifacts/acceptance/m2-v2-bilingual-cao-dewang-20260727"),
+    Path("artifacts/cloud-downloads/v4-formal-20260727/bimer-v4-results.tar.gz"),
     Path("artifacts/exports/m2-smoke-en"),
+    Path("artifacts/external/videos"),
+    Path("artifacts/external/annotation-handoff"),
+    Path("artifacts/external/external-video-plan.csv"),
+    Path("artifacts/external/external-video-plan.locked.json"),
+    Path("artifacts/external/SOURCES.md"),
+    Path("artifacts/external/SHA256SUMS"),
     Path("output/deliverables"),
 )
 
@@ -143,10 +154,54 @@ exec "$ROOT/.venv/bin/python" -m bimer.cli analyze \
 """,
     )
     write_launcher(
-        destination / "04-校验答辩包.command",
+        destination / "04-分析中文样例.command",
+        preamble
+        + """
+exec "$ROOT/.venv/bin/python" -m bimer.cli analyze \
+  --deployment "$ROOT/configs/deployment-v2.json" \
+  --artifact-root "$ROOT" \
+  --video "$ROOT/artifacts/demo/zh-face-cao-dewang-voa-50s.mp4" \
+  --language zh \
+  --output "$ROOT/artifacts/exports/defense-zh"
+""",
+    )
+    write_launcher(
+        destination / "05-校验答辩包.command",
         preamble
         + """
 exec shasum -a 256 -c "$ROOT/SHA256SUMS"
+""",
+    )
+    write_launcher(
+        destination / "06-重启后最终验收.command",
+        preamble
+        + """
+exec "$ROOT/scripts/run_post_reboot_acceptance.sh"
+""",
+    )
+    write_launcher(
+        destination / "07-播放备用录屏.command",
+        preamble
+        + """
+exec open "$ROOT/output/deliverables/BIMER-中文离线演示.mp4"
+""",
+    )
+    write_launcher(
+        destination / "08-打开双人标注包.command",
+        preamble
+        + """
+exec open "$ROOT/artifacts/external/annotation-handoff"
+""",
+    )
+    write_launcher(
+        destination / "09-检查双人标注.command",
+        preamble
+        + """
+exec "$ROOT/.venv/bin/python" "$ROOT/scripts/check_external_annotations.py" \
+  --annotator-one "$ROOT/artifacts/external/annotation-handoff/01-annotator-one.csv" \
+  --annotator-two "$ROOT/artifacts/external/annotation-handoff/02-annotator-two.csv" \
+  --adjudication "$ROOT/artifacts/external/annotation-handoff/03-adjudication.csv" \
+  --report "$ROOT/artifacts/external/annotation-handoff/agreement-report.json"
 """,
     )
 
@@ -159,21 +214,35 @@ def write_readme(destination: Path) -> None:
 - 固定的 V2 quality_lagf seed 42 检查点；
 - XLM-R、XLS-R、R3D-18、faster-whisper-small 与 YuNet 离线资产；
 - 当前 Python 3.11 虚拟环境；
-- 英文无人脸样例、预生成结果与论文/PPT；
+- 已记录来源与哈希的中文制造业人脸访谈、英文无人脸样例和预生成结果；
+- V4 探索性结果原始包与双语低内存 M2 实测证据；
+- 20 段锁定的中英文外测素材、许可来源、哈希和独立双人标注表；
+- 真实最终系统中文备用录屏；
 - 经过校验的源码、配置、测试和依赖锁。
 
 ## 答辩前流程
 
-1. 双击 `04-校验答辩包.command`，确认全部哈希为 OK。
+1. 双击 `05-校验答辩包.command`，确认全部哈希为 OK。
 2. 双击 `01-离线自检.command`，确认 doctor 报告 `ok: true`。
 3. 关闭网络后双击 `02-启动演示.command`。
-4. 优先演示 30–60 秒授权样例；若现场环境异常，展示预生成英文结果与 PPT。
+4. 可用 `04-分析中文样例.command` 和 `03-分析英文样例.command` 预演；
+   若现场环境异常，展示预生成结果与 PPT。
+5. 双击 `07-播放备用录屏.command` 检查离线备用演示。
 
-## 当前缺口
+## 已补齐
 
-- 尚缺一段 30–60 秒、已获授权的中文人脸样例。
-- 尚未完成中英文各 10 段、双标注者的外部测试。
-- 备用录屏需在中文样例补齐后录制。
+- 20 段外测素材已锁定：中英文各 10 段、五类条件各 2 段，许可、时长和
+  SHA-256 均已校验。
+- 备用录屏已完成，位于 `output/deliverables/BIMER-中文离线演示.mp4`。
+- 重启后系统级 swap 验收已自动化，双击 `06-重启后最终验收.command` 即可。
+
+## 仍需两次人工动作
+
+- 重启并在干净登录环境运行 `06-重启后最终验收.command`。当前 BIMER 进程实测
+  swap 为 0，但运行前的 macOS 全局 swap 已非零，不能伪造“干净启动”结论。
+- 由第一名人工标注者填写 `01-annotator-one.csv`，再邀请第二名人工标注者独立
+  填写 `02-annotator-two.csv`。当前两份标签均保持空白；两名标注者必须禁止
+  互看，完成后才能计算 Cohen's kappa、仲裁并报告外测指标。
 
 EmotionTalk、MELD 媒体、缓存特征和私人视频受许可约束，不包含在公开仓库中。
 """

@@ -20,6 +20,12 @@ EXTERNAL_CONDITIONS = (
     "accent_fast_change",
 )
 
+AUTHORIZATION_BASES = (
+    "self_recorded",
+    "written_permission",
+    "open_license",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ExternalVideo:
@@ -29,6 +35,8 @@ class ExternalVideo:
     language: str
     condition: str
     duration_seconds: float
+    authorization_basis: str
+    authorization_reference: str
 
 
 def validate_external_video_plan(
@@ -43,6 +51,10 @@ def validate_external_video_plan(
             raise ValueError("external video language must be en or zh")
         if video.condition not in EXTERNAL_CONDITIONS:
             raise ValueError("unknown external video condition")
+        if video.authorization_basis not in AUTHORIZATION_BASES:
+            raise ValueError("unknown external video authorization basis")
+        if not video.authorization_reference.strip():
+            raise ValueError("external video authorization reference is required")
         if not 30.0 <= video.duration_seconds <= 60.0:
             raise ValueError("external videos must be 30-60 seconds")
         if len(video.sha256) != 64 or any(
@@ -77,9 +89,18 @@ def lock_external_video_plan(
     languages: Sequence[str],
     conditions: Sequence[str],
     durations: Sequence[float],
+    authorization_bases: Sequence[str],
+    authorization_references: Sequence[str],
     output_path: Path | str,
 ) -> Path:
-    if not (len(paths) == len(languages) == len(conditions) == len(durations)):
+    if not (
+        len(paths)
+        == len(languages)
+        == len(conditions)
+        == len(durations)
+        == len(authorization_bases)
+        == len(authorization_references)
+    ):
         raise ValueError("external plan fields must have equal length")
     videos = []
     for index, path_value in enumerate(paths):
@@ -93,6 +114,8 @@ def lock_external_video_plan(
                 language=languages[index],
                 condition=conditions[index],
                 duration_seconds=float(durations[index]),
+                authorization_basis=authorization_bases[index],
+                authorization_reference=authorization_references[index],
             )
         )
     report = validate_external_video_plan(videos)
@@ -198,21 +221,21 @@ def evaluate_external_predictions(
     }
 
 
-def v3_external_acceptance(
-    v2: dict[str, object],
-    v3: dict[str, object],
+def external_model_acceptance(
+    baseline: dict[str, object],
+    candidate: dict[str, object],
 ) -> dict[str, object]:
-    overall_delta = float(v3["weighted_f1"]) - float(v2["weighted_f1"])
-    v2_conditions = v2["by_condition"]
-    v3_conditions = v3["by_condition"]
+    overall_delta = float(candidate["weighted_f1"]) - float(baseline["weighted_f1"])
+    baseline_conditions = baseline["by_condition"]
+    candidate_conditions = candidate["by_condition"]
     condition_deltas = {
-        condition: float(v3_conditions[condition]["weighted_f1"])
-        - float(v2_conditions[condition]["weighted_f1"])
+        condition: float(candidate_conditions[condition]["weighted_f1"])
+        - float(baseline_conditions[condition]["weighted_f1"])
         for condition in EXTERNAL_CONDITIONS
     }
     condition_mean = float(np.mean(list(condition_deltas.values())))
     worst_condition = min(condition_deltas.values())
-    ece_delta = float(v3["ece"]) - float(v2["ece"])
+    ece_delta = float(candidate["ece"]) - float(baseline["ece"])
     checks = {
         "overall_within_one_point": overall_delta >= -0.01,
         "condition_mean_improves_one_point": condition_mean >= 0.01,
@@ -228,3 +251,11 @@ def v3_external_acceptance(
         "ece_delta": ece_delta,
         "condition_deltas": condition_deltas,
     }
+
+
+def v3_external_acceptance(
+    v2: dict[str, object],
+    v3: dict[str, object],
+) -> dict[str, object]:
+    """Backward-compatible alias for archived V3 protocol code."""
+    return external_model_acceptance(v2, v3)

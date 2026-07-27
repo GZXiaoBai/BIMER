@@ -1,0 +1,27 @@
+seeds = [42, 123, 2026]
+learning_rate = 0.0001
+prototype_weights = [0.05, 0.10, 0.20]
+prototype_only_weight = 0.10
+max_gpu_hours = 20
+
+[defaults]
+manifest = "data/processed/v2/all.jsonl"
+features = "artifacts/features/bilingual-v2-quality"
+output = "artifacts/experiments/v4"
+device = "cuda"
+
+[thresholds]
+bilingual_weighted_f1_gain = 0.010
+bilingual_macro_f1_gain = 0.008
+worst_dataset_weighted_f1_delta = -0.003
+minority_f1_gain = 0.015
+minimum_predicted_classes = 4
+
+[lora]
+learning_rates = [0.0001, 0.0002]
+rank = 8
+alpha = 16
+dropout = 0.1
+contrastive_weight = 0.1
+temperature = 0.07
+max_epochs = 5

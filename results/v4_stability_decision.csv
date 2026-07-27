@@ -1,0 +1,5 @@
+criterion,actual_delta,required_threshold,passed
+bilingual_weighted_f1,0.0264137178,0.0100000000,true
+bilingual_macro_f1,0.0208916883,0.0080000000,true
+worst_dataset_weighted_f1,0.0139636821,-0.0030000000,true
+minority_f1,0.0132916581,0.0150000000,false

@@ -4,7 +4,7 @@
 
 BIMER 联合文本、语音和视频特征，对中英文对话进行七分类情感识别，并输出逐句概率、模态门控权重和整段情绪时间线。项目支持 MELD、EmotionTalk、单模态/融合基线、消融实验、缺失模态、音频噪声、视频丢帧、跨语言测试及 Gradio 演示。
 
-正式系统固定采用 V2 `quality_lagf` seed 42。V3 的类别损失与配对门控排序改进均未通过预先声明的验证集门槛，作为负结果保留，不再继续追分。完整数字、统计边界与可复核聚合文件见 [RESULTS.md](RESULTS.md)。
+正式系统固定采用 V2 `quality_lagf` seed 42。V3 的类别损失与配对门控排序改进均未通过预先声明的验证集门槛，作为负结果保留。V4 轻量文本适配在验证集上取得明显提升，但没有通过全部少数类稳定性门槛，因此没有访问官方测试集，也没有替换 V2。完整数字、统计边界与可复核聚合文件见 [RESULTS.md](RESULTS.md)。
 
 > 本仓库不包含受许可约束的数据集或训练权重。EmotionTalk 下载前必须在 Hugging Face 接受其学术使用条款。模型结果仅用于研究，不构成心理或医疗判断。
 
@@ -15,8 +15,10 @@ BIMER 联合文本、语音和视频特征，对中英文对话进行七分类�
 - 消融明确支持对话上下文与模态随机屏蔽。
 - 质量机制在视频丢帧条件下具有针对性收益，但不应表述为对所有退化均有效。
 - 语言嵌入没有得到消融支持；项目不宣称达到 SOTA，也不宣称超过原数据集论文的最佳单数据集结果。
+- V2 置信度仅用官方验证集拟合温度：英文 ECE 从 6.548% 降至 3.923%，中文从 11.728% 降至 3.514%；系统据此启用分语言温度缩放和不确定提示。
 
 项目限制、适用范围和伦理边界见 [MODEL_CARD.md](MODEL_CARD.md)、[DATA_AND_LICENSES.md](DATA_AND_LICENSES.md) 与 [ETHICS.md](ETHICS.md)。
+最终 20 段外部视频测试的素材、授权、锁定和双人标注流程见 [docs/external_test_protocol.md](docs/external_test_protocol.md)。
 
 模型结构图：[可编辑 SVG](diagram/bimer-architecture/bimer-model-architecture.svg) /
 [2× PNG](diagram/bimer-architecture/bimer-model-architecture@2x.png)。

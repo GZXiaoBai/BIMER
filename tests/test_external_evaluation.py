@@ -5,6 +5,7 @@ from bimer.external_evaluation import (
     ExternalVideo,
     annotation_agreement,
     evaluate_external_predictions,
+    external_model_acceptance,
     v3_external_acceptance,
     validate_external_video_plan,
 )
@@ -27,6 +28,8 @@ def _plan():
             language=language,
             condition=condition,
             duration_seconds=45.0,
+            authorization_basis="self_recorded",
+            authorization_reference=f"consent-{language}-{condition}-{index}",
         )
         for language in ("en", "zh")
         for condition in CONDITIONS
@@ -42,6 +45,19 @@ def test_external_plan_requires_twenty_balanced_locked_videos():
     assert all(count == 2 for count in report["by_language_condition"].values())
     with pytest.raises(ValueError, match="exactly 20"):
         validate_external_video_plan(_plan()[:-1])
+    invalid = _plan()
+    invalid[0] = ExternalVideo(
+        video_id=invalid[0].video_id,
+        path=invalid[0].path,
+        sha256=invalid[0].sha256,
+        language=invalid[0].language,
+        condition=invalid[0].condition,
+        duration_seconds=invalid[0].duration_seconds,
+        authorization_basis="",
+        authorization_reference="",
+    )
+    with pytest.raises(ValueError, match="authorization"):
+        validate_external_video_plan(invalid)
 
 
 def test_annotation_agreement_reports_raw_agreement_and_kappa():
@@ -87,3 +103,4 @@ def test_external_evaluation_and_v3_acceptance_use_video_clusters():
     }
     acceptance = v3_external_acceptance(v2, v3)
     assert acceptance["accepted"] is True
+    assert external_model_acceptance(v2, v3) == acceptance

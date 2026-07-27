@@ -14,23 +14,27 @@ from bimer.external_evaluation import (
 )
 
 
-def _duration(path: Path) -> float:
+def _probe_media(path: Path) -> float:
     result = subprocess.run(
         [
             "ffprobe",
             "-v",
             "error",
-            "-show_entries",
-            "format=duration",
+            "-show_streams",
+            "-show_format",
             "-of",
-            "default=noprint_wrappers=1:nokey=1",
+            "json",
             str(path),
         ],
         check=True,
         capture_output=True,
         text=True,
     )
-    return float(result.stdout.strip())
+    metadata = json.loads(result.stdout)
+    streams = metadata.get("streams", [])
+    if not any(stream.get("codec_type") == "audio" for stream in streams):
+        raise ValueError(f"external video has no audio stream: {path}")
+    return float(metadata["format"]["duration"])
 
 
 def main() -> int:
@@ -42,7 +46,7 @@ def main() -> int:
         rows = list(csv.DictReader(handle))
     paths = [Path(row["path"]) for row in rows]
     supplied_durations = [row.get("duration_seconds", "").strip() for row in rows]
-    measured = [_duration(path) for path in paths]
+    measured = [_probe_media(path) for path in paths]
     for supplied, actual in zip(supplied_durations, measured, strict=True):
         if supplied and abs(float(supplied) - actual) > 1.0:
             raise SystemExit("supplied and measured video durations differ by over one second")
@@ -51,6 +55,8 @@ def main() -> int:
         languages=[row["language"] for row in rows],
         conditions=[row["condition"] for row in rows],
         durations=measured,
+        authorization_bases=[row["authorization_basis"] for row in rows],
+        authorization_references=[row["authorization_reference"] for row in rows],
         output_path=args.output,
     )
     payload = json.loads(output.read_text(encoding="utf-8"))

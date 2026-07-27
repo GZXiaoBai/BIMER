@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import json
 import math
 import re
@@ -8,7 +9,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Literal, Protocol, Sequence
+from typing import Callable, Generic, Literal, Protocol, Sequence, TypeVar
 
 import numpy as np
 import torch
@@ -28,6 +29,28 @@ from .runtime_cache import RuntimeFeatureCache
 from .schema import AnalysisResult, AnalysisSegment
 
 RequestedLanguage = Literal["auto", "zh", "en"]
+ExtractorT = TypeVar("ExtractorT")
+
+
+class LazyExtractor(Generic[ExtractorT]):
+    def __init__(self, factory: Callable[[], ExtractorT]) -> None:
+        self._factory = factory
+        self._instance: ExtractorT | None = None
+
+    @property
+    def loaded(self) -> bool:
+        return self._instance is not None
+
+    def get(self) -> ExtractorT:
+        if self._instance is None:
+            self._instance = self._factory()
+        return self._instance
+
+    def release(self) -> None:
+        self._instance = None
+        gc.collect()
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,9 +308,9 @@ class PretrainedFeaturePipeline:
     def __init__(
         self,
         *,
-        text_extractor: TextFeatureExtractor,
-        audio_extractor: AudioFeatureExtractor,
-        vision_extractor: VisionFeatureExtractor,
+        text_extractor: TextFeatureExtractor | LazyExtractor[TextFeatureExtractor],
+        audio_extractor: AudioFeatureExtractor | LazyExtractor[AudioFeatureExtractor],
+        vision_extractor: VisionFeatureExtractor | LazyExtractor[VisionFeatureExtractor],
         face_cropper: YuNetFaceCropper,
         cache: RuntimeFeatureCache | None = None,
         encoder_versions: dict[str, str] | None = None,
@@ -304,6 +327,17 @@ class PretrainedFeaturePipeline:
         }
         self.last_runtime_profile: dict[str, float] = {}
         self._digest_cache: dict[Path, tuple[int, int, str]] = {}
+
+    @staticmethod
+    def _extractor(
+        value: ExtractorT | LazyExtractor[ExtractorT],
+    ) -> ExtractorT:
+        return value.get() if isinstance(value, LazyExtractor) else value
+
+    @staticmethod
+    def _release(value: object) -> None:
+        if isinstance(value, LazyExtractor):
+            value.release()
 
     def _video_sha256(self, video_path: Path) -> str:
         stat = video_path.stat()
@@ -342,30 +376,35 @@ class PretrainedFeaturePipeline:
         self.last_runtime_profile = {}
 
         started = time.perf_counter()
-        text_arrays = self._load_or_compute(
-            "text",
-            {
-                **common,
-                "texts": [segment.text for segment in segments],
-                "asr_confidence": [segment.asr_confidence for segment in segments],
-                "encoder": self.encoder_versions["text"],
-            },
-            lambda: {
-                "features": self.text_extractor.encode(
-                    [segment.text for segment in segments]
-                ).astype(np.float32),
-                "quality": np.stack(
-                    [
-                        text_quality(
-                            segment.text,
-                            source=("whisper" if segment.asr_confidence is not None else "human"),
-                            asr_confidence=segment.asr_confidence,
-                        )
-                        for segment in segments
-                    ]
-                ).astype(np.float32),
-            },
-        )
+        try:
+            text_arrays = self._load_or_compute(
+                "text",
+                {
+                    **common,
+                    "texts": [segment.text for segment in segments],
+                    "asr_confidence": [segment.asr_confidence for segment in segments],
+                    "encoder": self.encoder_versions["text"],
+                },
+                lambda: {
+                    "features": self._extractor(self.text_extractor)
+                    .encode([segment.text for segment in segments])
+                    .astype(np.float32),
+                    "quality": np.stack(
+                        [
+                            text_quality(
+                                segment.text,
+                                source=(
+                                    "whisper" if segment.asr_confidence is not None else "human"
+                                ),
+                                asr_confidence=segment.asr_confidence,
+                            )
+                            for segment in segments
+                        ]
+                    ).astype(np.float32),
+                },
+            )
+        finally:
+            self._release(self.text_extractor)
         text = text_arrays["features"].astype(np.float32)
         text_quality_rows = text_arrays["quality"].astype(np.float32)
         self.last_runtime_profile["text"] = time.perf_counter() - started
@@ -380,23 +419,29 @@ class PretrainedFeaturePipeline:
             if not np.any(quality_rows[:, 2] > 0.0):
                 raise ValueError("No valid speech audio was detected")
             return {
-                "features": self.audio_extractor.encode(safe_waveforms).astype(np.float32),
+                "features": self._extractor(self.audio_extractor)
+                .encode(safe_waveforms)
+                .astype(np.float32),
                 "available": available.astype(np.bool_),
                 "quality": quality_rows,
             }
 
         started = time.perf_counter()
-        audio_arrays = self._load_or_compute(
-            "audio",
-            {**common, "encoder": self.encoder_versions["audio"]},
-            compute_audio,
-        )
+        try:
+            audio_arrays = self._load_or_compute(
+                "audio",
+                {**common, "encoder": self.encoder_versions["audio"]},
+                compute_audio,
+            )
+        finally:
+            self._release(self.audio_extractor)
         audio = audio_arrays["features"].astype(np.float32)
         audio_available = audio_arrays["available"].astype(np.bool_)
         audio_quality_rows = audio_arrays["quality"].astype(np.float32)
         self.last_runtime_profile["audio"] = time.perf_counter() - started
 
         def compute_vision() -> dict[str, np.ndarray]:
+            vision_extractor = self._extractor(self.vision_extractor)
             vision_rows: list[np.ndarray] = []
             vision_available: list[bool] = []
             vision_quality_rows: list[np.ndarray] = []
@@ -404,7 +449,7 @@ class PretrainedFeaturePipeline:
                 root = Path(directory)
                 for index, segment in enumerate(segments):
                     segment_encoder = getattr(
-                        self.vision_extractor,
+                        vision_extractor,
                         "encode_video_segment_with_quality",
                         None,
                     )
@@ -419,12 +464,12 @@ class PretrainedFeaturePipeline:
                         clip = root / f"segment-{index:04d}.mp4"
                         _extract_video_clip(video_path, segment, clip)
                         quality_encoder = getattr(
-                            self.vision_extractor,
+                            vision_extractor,
                             "encode_video_with_quality",
                             None,
                         )
                         if quality_encoder is None:
-                            feature, available = self.vision_extractor.encode_video(
+                            feature, available = vision_extractor.encode_video(
                                 clip,
                                 face_cropper=self.face_cropper,
                             )
@@ -448,11 +493,14 @@ class PretrainedFeaturePipeline:
             }
 
         started = time.perf_counter()
-        vision_arrays = self._load_or_compute(
-            "vision",
-            {**common, "encoder": self.encoder_versions["vision"]},
-            compute_vision,
-        )
+        try:
+            vision_arrays = self._load_or_compute(
+                "vision",
+                {**common, "encoder": self.encoder_versions["vision"]},
+                compute_vision,
+            )
+        finally:
+            self._release(self.vision_extractor)
         vision = vision_arrays["features"].astype(np.float32)
         vision_available = vision_arrays["available"].astype(np.bool_)
         vision_quality_rows = vision_arrays["quality"].astype(np.float32)

@@ -11,6 +11,7 @@ build/
 *.egg-info/
 .tools/
 .superpowers/
+.playwright-cli/
 .worktrees/
 data/*
 !data/templates/
