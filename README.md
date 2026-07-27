@@ -15,6 +15,7 @@ BIMER 联合文本、语音和视频特征，对中英文对话进行七分类�
 - 消融明确支持对话上下文与模态随机屏蔽。
 - 质量机制在视频丢帧条件下具有针对性收益，但不应表述为对所有退化均有效。
 - 语言嵌入没有得到消融支持；项目不宣称达到 SOTA，也不宣称超过原数据集论文的最佳单数据集结果。
+- V2 置信度仅用官方验证集拟合温度：英文 ECE 从 6.548% 降至 3.923%，中文从 11.728% 降至 3.514%；系统据此启用分语言温度缩放和不确定提示。
 
 项目限制、适用范围和伦理边界见 [MODEL_CARD.md](MODEL_CARD.md)、[DATA_AND_LICENSES.md](DATA_AND_LICENSES.md) 与 [ETHICS.md](ETHICS.md)。
 最终 20 段外部视频测试的素材、授权、锁定和双人标注流程见 [docs/external_test_protocol.md](docs/external_test_protocol.md)。

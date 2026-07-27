@@ -29,6 +29,33 @@ All 32,958 utterances have unique sample IDs and resolvable feature records.
 There are no missing or orphaned cached features and no duplicate
 `context_id + utterance_id` keys.
 
+## Corrected single-modality baselines
+
+The pre-audit audio run had collapsed to the majority class and is excluded
+from the formal comparison. The corrected protocol fits per-dimension input
+normalization on the training split, reshuffles deterministically every epoch,
+enforces at least 15 epochs before patience is counted, and selects learning
+rates with seed 42 on the official validation split. The selected configuration
+was frozen before these three-seed test evaluations.
+
+| Modality | Dataset | learning rate | weighted-F1 | macro-F1 | accuracy |
+|---|---|---:|---:|---:|---:|
+| Text | MELD | 3e-4 | **59.819% ± 0.378%** | 40.728% ± 0.899% | 60.434% ± 0.632% |
+| Text | EmotionTalk | 3e-4 | 44.049% ± 0.438% | 38.955% ± 0.155% | 43.563% ± 0.441% |
+| Audio | MELD | 3e-4 | 44.473% ± 0.785% | 25.952% ± 0.885% | 46.284% ± 1.053% |
+| Audio | EmotionTalk | 1e-3 | **52.046% ± 1.454%** | 41.620% ± 1.521% | 52.532% ± 2.025% |
+| Vision | MELD | 1e-3 | 35.882% ± 0.520% | 16.815% ± 0.979% | 41.392% ± 1.605% |
+| Vision | EmotionTalk | 1e-3 | 44.224% ± 3.696% | 33.587% ± 2.319% | 44.548% ± 2.979% |
+
+All 18 formal runs predicted all seven classes. In particular, corrected audio
+weighted-F1 exceeds the majority baseline by 13.204 points on MELD and 27.679
+points on EmotionTalk, confirming that the frozen XLS-R features were useful
+and that the earlier failure came from optimization rather than absent acoustic
+signal. The frozen selection record is
+[`configs/experiment-v2-unimodal-selection.json`](configs/experiment-v2-unimodal-selection.json);
+the public aggregate table is
+[`results/v2_unimodal_corrected_summary.csv`](results/v2_unimodal_corrected_summary.csv).
+
 ## Main results
 
 ![Formal model comparison](docs/figures/main_results.png)
@@ -92,6 +119,27 @@ to targeted video-degradation robustness.
 Whisper text produces the largest non-missing-modality loss, especially on
 MELD, and is a central practical limitation of the end-to-end system.
 
+## Confidence calibration
+
+![V2 validation reliability curves](docs/figures/v2_calibration_reliability.png)
+
+Temperature scaling was fitted separately for English and Chinese using only
+the official validation splits and the frozen V2 seed-42 checkpoint. Both
+languages passed the predeclared rule: ECE had to fall by at least 10% and NLL
+could not worsen. Temperature scaling preserves the predicted class and
+therefore does not change accuracy or F1.
+
+| Language | Temperature | Uncertainty threshold | ECE before | ECE after | NLL before | NLL after |
+|---|---:|---:|---:|---:|---:|---:|
+| English | 1.193 | 0.45 | 6.548% | **3.923%** | 1.1813 | **1.1653** |
+| Chinese | 1.391 | 0.55 | 11.728% | **3.514%** | 0.9367 | **0.8822** |
+
+English and Chinese Brier scores also improved from 0.5593 to 0.5522 and from
+0.4728 to 0.4523, respectively. The deployed system uses the calibrated
+probabilities and marks utterances below the language-specific threshold as
+uncertain. Machine-readable values are in
+[`results/v2_calibration_summary.csv`](results/v2_calibration_summary.csv).
+
 ## Rare classes
 
 ![Per-class F1](docs/figures/per_class_f1.png)
@@ -104,6 +152,35 @@ The V2 per-class F1 values show a large dataset gap:
 Consequently, weighted-F1 must be reported together with macro-F1, per-class F1
 and confusion matrices. A high neutral-class score is not evidence of balanced
 recognition.
+
+![Three-seed V2 confusion matrices](docs/figures/confusion_matrices.png)
+
+The row-normalized three-seed confusion matrices make the imbalance concrete:
+MELD `fear` and `disgust` are frequently absorbed into higher-support classes,
+while EmotionTalk retains substantially stronger diagonal mass for both.
+Machine-readable cells are in
+[`results/v2_confusion_matrix.csv`](results/v2_confusion_matrix.csv).
+
+## Strict cross-language transfer
+
+The earlier single-language LAGF checkpoints were also evaluated without
+target-language fine-tuning:
+
+| Training data | Test data | Evaluation | weighted-F1 | macro-F1 |
+|---|---|---|---:|---:|
+| MELD | MELD | source-language control | 58.715% ± 0.339% | 39.824% ± 0.631% |
+| MELD | EmotionTalk | English → Chinese zero-shot | 20.164% ± 7.153% | 15.368% ± 7.432% |
+| EmotionTalk | EmotionTalk | source-language control | 58.731% ± 1.984% | 48.704% ± 3.665% |
+| EmotionTalk | MELD | Chinese → English zero-shot | 9.493% ± 5.767% | 8.076% ± 4.525% |
+
+The two zero-shot directions average only 14.828% weighted-F1. This experiment
+does **not** measure the jointly trained V2 system: the evaluated checkpoints
+contained language embeddings, and the unseen target-language embedding was not
+trained. The result therefore combines language shift, dataset/domain shift,
+label-distribution shift and that architectural limitation. It is reported as
+a failure boundary, not evidence that joint bilingual training is ineffective.
+The aggregate table is
+[`results/cross_language_summary.csv`](results/cross_language_summary.csv).
 
 ## V3 exploratory negative result
 

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 
 from scripts.generate_public_results import (
+    mean_confusion_matrix,
+    plot_confusion_matrices,
     select_public_per_class,
     select_public_robustness,
     v3_public_summary,
@@ -109,3 +112,64 @@ def test_public_per_class_excludes_ablations() -> None:
     selected = select_public_per_class(frame)
 
     assert selected["variant"].tolist() == ["quality_lagf"]
+
+
+def test_mean_confusion_matrix_averages_seed_predictions_and_normalizes_rows(
+    tmp_path,
+) -> None:
+    prediction_root = tmp_path / "formal"
+    for seed, prediction in ((42, [0, 1, 1, 1]), (123, [0, 0, 1, 1])):
+        directory = (
+            prediction_root
+            / "quality_lagf"
+            / "quality_lagf"
+            / "joint"
+            / f"seed-{seed}"
+            / "predictions"
+        )
+        directory.mkdir(parents=True)
+        np.savez_compressed(
+            directory / "meld.npz",
+            sample_ids=np.asarray(["a", "b", "c", "d"]),
+            truth=np.asarray([0, 0, 1, 1]),
+            prediction=np.asarray(prediction),
+        )
+
+    matrix = mean_confusion_matrix(
+        prediction_root,
+        "meld",
+        seeds=(42, 123),
+        class_count=2,
+    )
+
+    np.testing.assert_allclose(matrix, [[0.75, 0.25], [0.0, 1.0]])
+
+
+def test_plot_confusion_matrices_writes_png(tmp_path) -> None:
+    prediction_root = tmp_path / "formal"
+    for dataset in ("meld", "emotiontalk"):
+        for seed in (42, 123, 2026):
+            directory = (
+                prediction_root
+                / "quality_lagf"
+                / "quality_lagf"
+                / "joint"
+                / f"seed-{seed}"
+                / "predictions"
+            )
+            directory.mkdir(parents=True, exist_ok=True)
+            np.savez_compressed(
+                directory / f"{dataset}.npz",
+                sample_ids=np.asarray(["a", "b", "c"]),
+                truth=np.asarray([0, 1, 2]),
+                prediction=np.asarray([0, 2, 2]),
+            )
+
+    output = tmp_path / "confusion.png"
+    plot_confusion_matrices(
+        prediction_root,
+        output,
+        labels=("neutral", "joy", "sadness"),
+    )
+
+    assert output.read_bytes().startswith(b"\x89PNG")

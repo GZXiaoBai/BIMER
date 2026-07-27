@@ -97,3 +97,11 @@ modality availability, quality signals and stage runtimes. Whisper executes in
 an isolated subprocess to avoid PyAV/OpenCV FFmpeg-library conflicts. The
 runtime prefers Apple MPS for encoders and fusion and explicitly falls back to
 CPU when required.
+
+The deployment calibration was fitted only on the official validation splits.
+English uses temperature 1.193 and uncertainty threshold 0.45; Chinese uses
+temperature 1.391 and threshold 0.55. Validation ECE fell from 6.548% to 3.923%
+for English and from 11.728% to 3.514% for Chinese, while NLL and Brier score
+also improved. Temperature scaling preserves the predicted class, so it does
+not alter accuracy or F1. Full aggregate values and reliability curves are in
+[RESULTS.md](RESULTS.md).

@@ -42,7 +42,10 @@
       "local_path": "artifacts/models/huggingface/faster-whisper-small"
     }
   },
-  "calibration": null,
+  "calibration": {
+    "path": "artifacts/deployment/v2-quality-lagf-seed42/calibration.json",
+    "sha256": "ad4dc5bbd2d27e9afc7f4fe884269769c46d31ea98f727f60a3217fbed1c13ac"
+  },
   "runtime": {
     "window_size": 32,
     "window_overlap": 8,
