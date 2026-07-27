@@ -1,5 +1,5 @@
 # BIMER private evidence registry
-# Generated 2026-07-26 on codex/engineering-hardening
+# Updated 2026-07-27 on codex/v4-context-prototype
 # Paths are relative to the repository root
 385a3a38ecc9c273825b6cd72d42ef5e356af505d6572ec03f191fba2b199ab8  artifacts/analysis/v2-formal-ablations/analysis-report.md
 3149211ce3768830045f5354da11b4490c8c7f8504b3bf4a3c14e36f497bc72d  artifacts/analysis/v2-robustness/robustness-decision-report.md
@@ -20,3 +20,11 @@ cbc5d8a23909e62cb553f01a789ebfae821aab2b869a2197035a6b56d5411e6a  artifacts/auto
 ea1b9b6a9cde76619399f4612353c81a6a97bf5191b166451b2445cbc27d24a2  artifacts/deploy/bimer-v2-code.tar.gz
 a58031bf16520538b9bc9dbf57258f4fb78308c2b1f64f21162a05022028e15d  artifacts/deploy/bimer-v3-source-20260726.tar.gz
 9e20e6116ade785e196f00f8aceb92c3394e31597f350c23519b25523a87d89f  configs/experiment-v2-selection.json
+ad4dc5bbd2d27e9afc7f4fe884269769c46d31ea98f727f60a3217fbed1c13ac  artifacts/deployment/v2-quality-lagf-seed42/calibration.json
+f56b2ccdca2047fe1496722d18085e7c2a1ee5cf8a55aa54a704c7f4da564237  output/deliverables/BIMER-本科毕业论文-答辩版.docx
+507a583a6f28e530f7db5b8c5cf3b0c8458c657d278727afe15127ac1f111e69  output/deliverables/BIMER-本科毕业论文-答辩版.pdf
+113be4c6a9c8aeecf33f18fd4038eb2bcbf7f004918acad5df1cacc19e083903  output/deliverables/BIMER-本科毕业设计答辩.pptx
+69ca4c122d9027e39db939615c6b21fd6b9bdd025df3c474cfdc2768d8e4d9e7  output/deliverables/BIMER-中文离线演示.mp4
+bcce62d3726fb57c86a3ae3a031d7e23b2c23dee85ac584ab54d8dbbff195759  output/private-defense/BIMER-offline-defense-20260727-final-4c782d7/SHA256SUMS
+6394dea7854a2e866e989ce98b3a470d74e99d89331721648d3fe5d1d17e0084  output/annotation-packs/BIMER-外测标注者一.zip
+6ec5c03030a3ae21c036b1758162260137b013531b3e8773ad8cbd32b5fbd559  output/annotation-packs/BIMER-外测标注者二.zip
