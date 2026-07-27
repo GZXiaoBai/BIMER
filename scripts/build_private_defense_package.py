@@ -14,13 +14,14 @@ PRIVATE_ASSET_PATHS = (
     Path(".venv"),
     Path("artifacts/deployment/v2-quality-lagf-seed42"),
     Path("artifacts/models"),
-    Path("artifacts/demo"),
+    Path("artifacts/demo/en-noface.mp4"),
+    Path("artifacts/demo/zh-face-cao-dewang-voa-50s.mp4"),
     Path("artifacts/analysis/m2-smoke-en.json"),
     Path("artifacts/analysis/v2-formal-ablations"),
     Path("artifacts/analysis/v2-robustness"),
     Path("artifacts/analysis/v4-exploratory"),
     Path("artifacts/acceptance/m2-v2-english-low-memory-20260727"),
-    Path("artifacts/acceptance/m2-v2-bilingual-ma-jian-20260727"),
+    Path("artifacts/acceptance/m2-v2-bilingual-cao-dewang-20260727"),
     Path("artifacts/cloud-downloads/v4-formal-20260727/bimer-v4-results.tar.gz"),
     Path("artifacts/exports/m2-smoke-en"),
     Path("output/deliverables"),
@@ -153,7 +154,7 @@ exec "$ROOT/.venv/bin/python" -m bimer.cli analyze \
 exec "$ROOT/.venv/bin/python" -m bimer.cli analyze \
   --deployment "$ROOT/configs/deployment-v2.json" \
   --artifact-root "$ROOT" \
-  --video "$ROOT/artifacts/demo/zh-face-ma-jian-voa-50s.mp4" \
+  --video "$ROOT/artifacts/demo/zh-face-cao-dewang-voa-50s.mp4" \
   --language zh \
   --output "$ROOT/artifacts/exports/defense-zh"
 """,
@@ -175,7 +176,7 @@ def write_readme(destination: Path) -> None:
 - 固定的 V2 quality_lagf seed 42 检查点；
 - XLM-R、XLS-R、R3D-18、faster-whisper-small 与 YuNet 离线资产；
 - 当前 Python 3.11 虚拟环境；
-- 已记录来源与哈希的中文人脸样例、英文无人脸样例和预生成结果；
+- 已记录来源与哈希的中文制造业人脸访谈、英文无人脸样例和预生成结果；
 - V4 探索性结果原始包与双语低内存 M2 实测证据；
 - 经过校验的源码、配置、测试和依赖锁。
 

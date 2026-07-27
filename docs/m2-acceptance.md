@@ -13,14 +13,14 @@ Mode: offline encoders, sequential low-memory MPS feature extraction, CPU Whispe
 | Check | Result | Threshold |
 |---|---:|---:|
 | Chinese face video duration | 50.00 s | 30–60 s |
-| Cold-cache Chinese analysis | 34.55 s | ≤120 s |
-| Chinese content | 8/8 segments in Chinese | Required |
-| Chinese face behavior | Vision enabled for all 8 segments | Required |
+| Cold-cache Chinese analysis | 36.51 s | ≤120 s |
+| Chinese content | 13/13 segments in Chinese | Required |
+| Chinese face behavior | Vision enabled for all 13 segments | Required |
 | English no-face video duration | 31.72 s | 30–60 s |
-| Cold-cache English analysis | 18.42 s | ≤120 s |
+| Cold-cache English analysis | 30.36 s | ≤120 s |
 | Peak memory footprint | 3.84 GB (3.58 GiB) | ≤6.5 GiB |
 | BIMER process swap operations | 0 | 0 |
-| Edited-text reanalysis | 4.03 s | ≤15 s |
+| Edited-text reanalysis | 5.28 s | ≤15 s |
 | No-face behavior | Vision disabled for all 8 English segments | Required |
 | JSON/CSV/PNG exports | Generated; browser download previously verified | Required |
 | Clickable timeline | Seeking from 25.16 s previously confirmed | Required |
@@ -30,20 +30,22 @@ Mode: offline encoders, sequential low-memory MPS feature extraction, CPU Whispe
 | Video without audio stream | Rejected before analysis | Required |
 
 The final bilingual cold-cache run cleared seven feature-cache entries before
-analysis. Its edited-text profile was 3.054 s for text, 0.089 s for cached
-audio, 0.085 s for cached vision, and 0.073 s for fusion. This confirms that
+analysis. Its edited-text profile was 4.397 s for text, 0.108 s for cached
+audio, 0.100 s for cached vision, and 0.057 s for fusion. This confirms that
 text editing does not rerun transcription or recompute audio and visual
 features.
 
-The Chinese sample is a 50-second excerpt (seconds 5–55) from the Voice of
-America Chinese interview “Ma Jian VOA interview 20181112.” The Wikimedia
+The Chinese sample is a 50-second excerpt (seconds 70–120) from the Voice of
+America Chinese business interview “VOA专访中国玻璃大王曹德旺.” The Wikimedia
 Commons source page identifies the VOA-only work as public domain in the United
-States. The original and excerpt hashes are recorded in `DATA_AND_LICENSES.md`.
-The sample contains continuous Mandarin speech and a visible interview face.
+States and notes that the imported upload has not received an additional
+administrator review. The original and excerpt hashes are recorded in
+`DATA_AND_LICENSES.md`. The sample contains continuous Mandarin discussion of
+manufacturing, labor, and costs, with an interview face visible throughout.
 
 The machine was already under substantial system-wide memory pressure before
-the final bilingual run. macOS global swap usage increased from 9,833.06 MB to
-10,582.31 MB. The BIMER process itself reported zero swap operations and stayed
+the final bilingual run. macOS global swap usage increased from 9,542.00 MB to
+10,586.31 MB. The BIMER process itself reported zero swap operations and stayed
 below the memory limit. A clean-login system-wide “swap unchanged” check
 remains pending and is not reported as passed.
 
@@ -71,12 +73,12 @@ The machine-readable final bilingual report records `complete: true` and
 `passed: true`. Its private evidence hashes are:
 
 - acceptance JSON:
-  `580fdf9c69f90b979489e5d8ea3ff3377752be5fe5aac4563f7a1b2bf97c7d5b`
+  `462d16c872d2d6228d4e7697a6c7aa9f58f9f9b459344fa0a233b200f40c2a85`
 - resource JSON:
-  `e4dac84d7c1c4e99e36c65b038d1b834b66cafacbd833b57eb68079c0292d9b7`
+  `3bbfab88bda066226c342dc9fec0885cf3ddf2f05d7939fb1aae14e9255f2f1c`
 - exported JSON:
-  `cf6f46dbd663fb38a994388beba6b86cd148937921838d0d6288c54ad3e7398f`
+  `f909f8771f772c0d5d8a1627371a0a504ddeaff9333e5d73af34b2e6c5e406e9`
 - exported CSV:
-  `355c55fab46d6ee067ff6031c53504d9f5ff18041ee6423b6f70f34fbb394f7b`
+  `04c63fcb6043b782f0eedd474e67ada5d24c97366ce597a9a910a7695fa5df93`
 - exported PNG:
-  `3caa31698c7273262a749f5e5d13fa3b4f45aa919d047cc2d452570221b9097b`
+  `37a157d7e00f39d1907ee4d71713943a55364b0f4190209123bba7aac8abd94e`

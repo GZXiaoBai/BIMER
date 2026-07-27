@@ -41,16 +41,19 @@ and de-identified failure descriptions only.
 
 ### Chinese face-video defense sample
 
-The private defense package includes a 50-second excerpt from **“Ma Jian VOA
-interview 20181112”**, authored by Voice of America Chinese. The
-[Wikimedia Commons file page](https://commons.wikimedia.org/wiki/File:Ma_Jian_VOA_interview_20181112.webm)
-identifies the VOA-only work as public domain in the United States.
+The private defense package includes a 50-second excerpt from **“VOA专访中国
+玻璃大王曹德旺”**, authored by Voice of America Chinese. The
+[Wikimedia Commons file page](https://commons.wikimedia.org/wiki/File:VOA专访中国玻璃大王曹德旺.webm)
+identifies the VOA-only work as public domain in the United States. The page
+also notes that the imported upload has not received an additional Commons
+administrator review; the defense record therefore preserves the exact source
+page and hashes rather than making a broader copyright claim.
 
-- Original file: 68.409-second WebM, SHA-256
-  `ba891b1d4c350e7310efba8e03f5fbda86e46d02bc261da31cff89254d99a17d`.
-- Defense excerpt: seconds 5.000–55.000, transcoded to H.264/AAC without
+- Original file: 625.158-second WebM, SHA-256
+  `c823deed1ba7645075067db4651c4b6484d9032f189c98d4b1a933cad30fd4b3`.
+- Defense excerpt: seconds 70.000–120.000, transcoded to H.264/AAC without
   changing the spoken content, SHA-256
-  `d9a8831cfa978bd9d84f4bfb52d4472effa4a0e25678d2ee1626edd7053cb78c`.
+  `ff67739bda750d71d4763f2d274ac65e9888f7598722b063c348a4cb01d59af1`.
 - Use: non-commercial academic system acceptance and defense demonstration.
   The excerpt must not be presented as endorsement by the speaker or VOA.
 
