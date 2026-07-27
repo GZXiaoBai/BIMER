@@ -64,7 +64,12 @@ def test_write_annotation_handoff_creates_independent_blank_copies(tmp_path: Pat
             saved = list(csv.DictReader(handle))
         assert saved[0]["label"] == ""
         assert saved[0]["text"] == "Hello there"
-    assert "禁止互看" in outputs["instructions"].read_text(encoding="utf-8")
+    instructions = outputs["instructions"].read_text(encoding="utf-8")
+    assert "禁止互看" in instructions
+    assert "以整段中占主导的可观察情感为准" in instructions
+    assert "neutral" in instructions
+    assert "讽刺" in instructions
+    assert "不要因为 ASR 文本中的情感词直接定类" in instructions
 
 
 def test_prepare_adjudication_rows_keeps_agreements_and_blanks_disagreements():
