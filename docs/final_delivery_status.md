@@ -31,8 +31,11 @@
   `blocked_human_annotation`。
 - 493 项自动测试通过，总体覆盖率 86.56%；Ruff、扩展后的 12 个核心模块 Mypy
   和公开树检查通过。
-- `codex/v1.1-hardening` 已推送，GitHub Draft PR #3 已创建；最终证据冻结并通过
-  CI 后再合并和发布 `v1.1.0`。
+- `codex/v1.1-hardening` 已通过两组干净克隆 CI 并由 PR #3 合并到 `main`；
+  GitHub Release `v1.1.0` 已发布，标签固定在通过 CI 的合并提交 `85c6334`。
+- 唯一当前离线答辩包为
+  `BIMER-offline-defense-v1.1.0-20260728-85c6334`；包内全量 SHA-256
+  校验和离线 doctor 均通过，历史包全部保留在 `_superseded/`。
 
 ## 尚需人工完成
 
