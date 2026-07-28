@@ -7,7 +7,7 @@ import pytest
 
 import bimer.runtime as runtime_module
 from bimer.inference import TranscriptSegment
-from bimer.runtime import RuntimeSession, SegmentEdit
+from bimer.runtime import RuntimeSession, SegmentEdit, build_runtime_session
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -70,6 +70,36 @@ def test_runtime_session_close_is_idempotent_and_blocks_future_work() -> None:
         session.analyze(Path("dialogue.mp4"), "en")
 
 
+def test_runtime_session_analyze_cacheless_legacy_verify_and_resource_release() -> None:
+    released: list[str] = []
+
+    class Resource:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def release(self) -> None:
+            released.append(self.name)
+
+    analyzer = FakeAnalyzer()
+    analyzer.feature_pipeline = SimpleNamespace(
+        cache=None,
+        text_extractor=Resource("text"),
+        audio_extractor=Resource("audio"),
+        vision_extractor=Resource("vision"),
+    )
+    analyzer.transcriber = SimpleNamespace(close=lambda: released.append("asr"))
+    session = RuntimeSession(analyzer)
+
+    with session:
+        assert session.analyze(Path("dialogue.mp4"), "en").language == "en"
+        assert session.clear_cache() == 0
+        with pytest.raises(RuntimeError, match="no deployment manifest"):
+            session.verify()
+
+    assert released == ["text", "audio", "vision", "asr"]
+    assert session.closed is True
+
+
 def test_runtime_session_exposes_cache_clear_and_deployment_verification(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -93,3 +123,56 @@ def test_runtime_adapters_use_the_session_builder() -> None:
 
     assert "build_runtime_session(" in cli
     assert "build_runtime_session(" in acceptance
+
+
+def test_build_runtime_session_resolves_manifest_assets_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    references = {
+        name: SimpleNamespace(
+            identifier=f"remote/{name}",
+            revision="revision",
+            local_path=Path(f"models/{name}"),
+        )
+        for name in ("text", "audio", "vision", "asr")
+    }
+    manifest = SimpleNamespace(
+        checkpoint=SimpleNamespace(path=Path("checkpoint.pt")),
+        yunet=SimpleNamespace(path=Path("yunet.onnx")),
+        calibration=None,
+        encoders=references,
+        runtime=SimpleNamespace(
+            cache_directory=Path("cache"),
+            asr_timeout_seconds=30,
+            low_memory_mode=True,
+        ),
+        model_version="v2_quality_lagf",
+    )
+    analyzer = FakeAnalyzer()
+    assembled: dict[str, object] = {}
+    monkeypatch.setattr(runtime_module.DeploymentManifest, "load", lambda _path: manifest)
+    monkeypatch.setattr(
+        runtime_module,
+        "verify_deployment",
+        lambda *_args, **_kwargs: SimpleNamespace(ok=True, errors=()),
+    )
+
+    def assemble(**kwargs):
+        assembled.update(kwargs)
+        return analyzer
+
+    monkeypatch.setattr(runtime_module, "_assemble_runtime", assemble)
+
+    session = build_runtime_session(
+        tmp_path / "deployment.json",
+        artifact_root=tmp_path,
+        device_name="cpu",
+        offline=True,
+    )
+
+    assert session.analyzer is analyzer
+    assert assembled["checkpoint_path"] == tmp_path / "checkpoint.pt"
+    assert assembled["text_model"] == str(tmp_path / "models/text")
+    assert assembled["low_memory_mode"] is True
+    assert assembled["encoder_versions"]["vision"] == "remote/vision@revision"

@@ -42,7 +42,7 @@ jobs:
           uv run python -m pytest
           --cov=bimer
           --cov-report=term-missing
-          --cov-fail-under=80
+          --cov-fail-under=85
       - name: Dependency audit
         run: uv run pip-audit
 
