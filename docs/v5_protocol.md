@@ -51,3 +51,15 @@ cloud cleanup.
 The public repository may contain code, configuration, aggregate reports, and
 the final decision. Paired per-sample features, predictions, checkpoints, and
 licensed media remain in the private evidence package.
+
+## Frozen outcome
+
+The seed-42 screen completed on 2026-07-28 and stopped V5 without accessing an
+official test split. `beta=0.05` and `beta=0.10` improved bilingual clean
+weighted-F1 by 0.553 and 0.627 percentage points, but improved bilingual
+Whisper weighted-F1 by only 1.273 and 1.324 points. EmotionTalk Whisper
+weighted-F1 decreased by 0.096 points for both candidates, and 50% video-drop
+weighted-F1 decreased by 0.674 and 0.660 points. Neither candidate passed.
+
+No formal V5 seeds or exploratory official test were run. The frozen aggregate
+record is [docs/v5_exploratory_results.md](v5_exploratory_results.md).

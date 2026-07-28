@@ -94,11 +94,14 @@ the deployment model.
 ## V4 and V5 exploratory boundary
 
 V4 did not pass all predeclared validation criteria and never accessed the
-official test set. V5 targets the observed human-to-Whisper transcription
+official test set. V5 targeted the observed human-to-Whisper transcription
 degradation with a quality-conditioned residual adapter and paired
-prediction-consistency loss. V5 remains post-hoc exploratory even if it passes
-validation; v1.1.0 continues to deploy V2. See
-[docs/v5_protocol.md](docs/v5_protocol.md).
+prediction-consistency loss. Both seed-42 candidates improved MELD Whisper
+validation performance, but neither reached the 1.5-point bilingual target;
+EmotionTalk did not improve and 50% video-drop robustness exceeded the allowed
+degradation. V5 therefore stopped at validation, ran no formal seeds, and never
+accessed the official test sets. v1.1.0 continues to deploy V2. See
+[docs/v5_exploratory_results.md](docs/v5_exploratory_results.md).
 
 ## Runtime behavior
 
