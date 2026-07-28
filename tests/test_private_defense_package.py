@@ -17,6 +17,7 @@ def test_private_package_includes_external_handoff_and_backup_recording():
     module = _package_module()
     paths = {str(path) for path in module.PRIVATE_ASSET_PATHS}
 
+    assert "artifacts/cloud-downloads/v5-screen-20260728/bimer-v5-results.tar.gz" in paths
     assert "artifacts/external/videos" in paths
     assert "artifacts/external/annotation-handoff" in paths
     assert "artifacts/external/external-video-plan.locked.json" in paths
@@ -34,4 +35,6 @@ def test_private_package_exposes_post_reboot_acceptance_and_honest_status(tmp_pa
     readme = (tmp_path / "README-答辩使用说明.md").read_text(encoding="utf-8")
     assert "20 段外测素材已锁定" in readme
     assert "备用录屏已完成" in readme
+    assert "V5 验证阶段结果原始包" in readme
+    assert "V5 未运行三随机种子或官方测试" in readme
     assert "第二名人工标注者" in readme
