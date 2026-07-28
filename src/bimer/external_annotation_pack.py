@@ -112,6 +112,105 @@ def write_annotation_handoff(
     return outputs
 
 
+def _key_annotation_rows(
+    rows: Sequence[Mapping[str, str]],
+    *,
+    source: str,
+) -> dict[tuple[str, str], Mapping[str, str]]:
+    values: dict[tuple[str, str], Mapping[str, str]] = {}
+    for row in rows:
+        key = (str(row.get("video_id", "")), str(row.get("segment_id", "")))
+        if not all(key):
+            raise ValueError(f"{source} contains an empty video_id or segment_id")
+        if key in values:
+            raise ValueError(f"{source} contains duplicate video_id/segment_id keys")
+        values[key] = row
+    return values
+
+
+def audit_annotation_readiness(
+    master: Sequence[Mapping[str, str]],
+    annotator_one: Sequence[Mapping[str, str]],
+    annotator_two: Sequence[Mapping[str, str]],
+    *,
+    independence_confirmed: bool = False,
+) -> dict[str, object]:
+    """Validate two annotation packs without inferring missing human evidence.
+
+    Agreement is deliberately withheld until both packs are complete and the
+    caller explicitly attests that the annotators worked independently.
+    """
+
+    sources = {
+        "master": _key_annotation_rows(master, source="master"),
+        "annotator_one": _key_annotation_rows(annotator_one, source="annotator_one"),
+        "annotator_two": _key_annotation_rows(annotator_two, source="annotator_two"),
+    }
+    master_rows = sources["master"]
+    if not master_rows or any(set(rows) != set(master_rows) for rows in sources.values()):
+        raise ValueError("annotation files must contain the same non-empty segment set")
+
+    immutable_columns = tuple(
+        column for column in ANNOTATION_COLUMNS if column not in {"label", "notes"}
+    )
+    ordered = sorted(master_rows)
+    for source_name in ("annotator_one", "annotator_two"):
+        source_rows = sources[source_name]
+        for key in ordered:
+            if any(
+                str(source_rows[key].get(column, "")) != str(master_rows[key].get(column, ""))
+                for column in immutable_columns
+            ):
+                raise ValueError(f"{source_name} changed immutable segment fields")
+
+    labels_by_source: dict[str, list[str]] = {}
+    for source_name in ("annotator_one", "annotator_two"):
+        labels = [str(sources[source_name][key].get("label", "")).strip() for key in ordered]
+        if any(label and label not in EMOTION_LABELS for label in labels):
+            raise ValueError("all human annotation labels must use the fixed seven classes")
+        labels_by_source[source_name] = labels
+
+    first_labels = labels_by_source["annotator_one"]
+    second_labels = labels_by_source["annotator_two"]
+    blank_counts = {
+        "annotator_one": sum(not label for label in first_labels),
+        "annotator_two": sum(not label for label in second_labels),
+    }
+    base: dict[str, object] = {
+        "segments": len(ordered),
+        "blank_labels": blank_counts,
+        "independence_confirmed": independence_confirmed,
+        "agreement_calculated": False,
+    }
+    if any(blank_counts.values()):
+        return {
+            **base,
+            "status": "blocked_human_annotation",
+            "exact_label_match": first_labels == second_labels,
+        }
+
+    exact_label_match = first_labels == second_labels
+    if not independence_confirmed:
+        return {
+            **base,
+            "status": "awaiting_independence_attestation",
+            "exact_label_match": exact_label_match,
+        }
+
+    agreement = annotation_agreement(first_labels, second_labels)
+    return {
+        **base,
+        **agreement,
+        "status": (
+            "requires_reannotation"
+            if agreement["requires_reannotation"]
+            else "ready_for_adjudication"
+        ),
+        "exact_label_match": exact_label_match,
+        "agreement_calculated": True,
+    }
+
+
 def prepare_adjudication_rows(
     annotator_one: Sequence[Mapping[str, str]],
     annotator_two: Sequence[Mapping[str, str]],

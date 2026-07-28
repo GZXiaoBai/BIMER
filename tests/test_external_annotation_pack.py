@@ -3,8 +3,11 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import pytest
+
 from bimer.external_annotation_pack import (
     AnnotationSegment,
+    audit_annotation_readiness,
     build_annotation_rows,
     prepare_adjudication_rows,
     write_annotation_handoff,
@@ -96,3 +99,52 @@ def test_prepare_adjudication_rows_keeps_agreements_and_blanks_disagreements():
     assert rows[0]["label"] == "neutral"
     assert rows[1]["label"] == ""
     assert "annotator_one=joy" in rows[1]["notes"]
+
+
+def test_annotation_readiness_keeps_blank_handoff_explicitly_blocked():
+    rows = build_annotation_rows({"en-normal-01": [AnnotationSegment(0.0, 3.0, "Hello", 0.9)]})
+
+    report = audit_annotation_readiness(rows, rows, rows)
+
+    assert report["status"] == "blocked_human_annotation"
+    assert report["segments"] == 1
+    assert report["agreement_calculated"] is False
+
+
+def test_annotation_readiness_requires_independence_attestation_before_kappa():
+    master = build_annotation_rows(
+        {
+            "en-normal-01": [
+                AnnotationSegment(0.0, 3.0, "Hello", 0.9),
+                AnnotationSegment(3.0, 6.0, "Goodbye", 0.8),
+            ]
+        }
+    )
+    first = [{**master[0], "label": "joy"}, {**master[1], "label": "sadness"}]
+    second = [{**master[0], "label": "joy"}, {**master[1], "label": "sadness"}]
+
+    awaiting = audit_annotation_readiness(master, first, second)
+    ready = audit_annotation_readiness(
+        master,
+        first,
+        second,
+        independence_confirmed=True,
+    )
+
+    assert awaiting["status"] == "awaiting_independence_attestation"
+    assert awaiting["exact_label_match"] is True
+    assert awaiting["agreement_calculated"] is False
+    assert ready["status"] == "ready_for_adjudication"
+    assert ready["agreement_calculated"] is True
+    assert ready["cohen_kappa"] == 1.0
+
+
+def test_annotation_readiness_rejects_edited_segments_and_illegal_labels():
+    master = build_annotation_rows({"en-normal-01": [AnnotationSegment(0.0, 3.0, "Hello", 0.9)]})
+    edited = [{**master[0], "text": "changed", "label": "joy"}]
+    with pytest.raises(ValueError, match="immutable segment fields"):
+        audit_annotation_readiness(master, edited, edited)
+
+    invalid = [{**master[0], "label": "happy"}]
+    with pytest.raises(ValueError, match="fixed seven classes"):
+        audit_annotation_readiness(master, invalid, invalid)

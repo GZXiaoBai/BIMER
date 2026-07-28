@@ -197,11 +197,19 @@ exec open "$ROOT/artifacts/external/annotation-handoff"
         destination / "09-检查双人标注.command",
         preamble
         + """
+printf "确认两份标注由两名真人独立完成、期间互未查看对方结果？输入 YES 继续："
+read -r confirmation
+if [[ "$confirmation" != "YES" ]]; then
+  echo "未确认独立标注；不会计算 Cohen's kappa。"
+  exit 2
+fi
 exec "$ROOT/.venv/bin/python" "$ROOT/scripts/check_external_annotations.py" \
+  --master "$ROOT/artifacts/external/annotation-handoff/00-segments-and-asr.csv" \
   --annotator-one "$ROOT/artifacts/external/annotation-handoff/01-annotator-one.csv" \
   --annotator-two "$ROOT/artifacts/external/annotation-handoff/02-annotator-two.csv" \
   --adjudication "$ROOT/artifacts/external/annotation-handoff/03-adjudication.csv" \
-  --report "$ROOT/artifacts/external/annotation-handoff/agreement-report.json"
+  --report "$ROOT/artifacts/external/annotation-handoff/agreement-report.json" \
+  --confirm-independent
 """,
     )
 

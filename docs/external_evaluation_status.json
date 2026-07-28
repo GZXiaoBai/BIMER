@@ -1,0 +1,12 @@
+{
+  "status": "blocked_human_annotation",
+  "updated": "2026-07-28",
+  "locked_videos": 20,
+  "segments": 282,
+  "annotator_packs": 2,
+  "human_annotators_completed": 0,
+  "independence_confirmed": false,
+  "agreement_calculated": false,
+  "model_evaluated": false,
+  "blocking_requirement": "Two different human annotators must independently complete the locked packs before agreement, adjudication, or model evaluation."
+}
