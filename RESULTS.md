@@ -230,6 +230,26 @@ context-gate or prototype mechanisms. See
 [`docs/v4_exploratory_results.md`](docs/v4_exploratory_results.md) for the full
 decision record and archive hashes.
 
+## V5 ASR-consistency negative result
+
+V5 added an identity-initialized, quality-conditioned text residual adapter and
+paired Jensen-Shannon consistency between human and Whisper views. Only
+`beta=0.05` and `beta=0.10` were screened with seed 42 on validation data.
+
+| Candidate | Clean weighted-F1 Δ | Clean macro-F1 Δ | Whisper average Δ | MELD Whisper Δ | EmotionTalk Whisper Δ | 50% video-drop Δ |
+|---|---:|---:|---:|---:|---:|---:|
+| β = 0.05 | +0.553 | +1.385 | +1.273 | +2.642 | -0.096 | -0.674 |
+| β = 0.10 | +0.627 | +1.484 | +1.324 | +2.744 | -0.096 | -0.660 |
+
+Both candidates showed useful local gains, but neither reached the
+predeclared 1.5-point bilingual Whisper target, neither improved both datasets,
+and both exceeded the allowed 0.5-point video-drop degradation. V5 therefore
+stopped at validation. No formal three-seed run and no official-test access
+occurred. Public aggregates are in
+[`results/v5_validation_summary.csv`](results/v5_validation_summary.csv), with
+the full decision in
+[`docs/v5_exploratory_results.md`](docs/v5_exploratory_results.md).
+
 ## Claim boundary
 
 Supported:
@@ -247,7 +267,8 @@ Not claimed:
 4. superiority to the original papers' best single-dataset systems;
 5. clinical or psychological validity;
 6. V4 official-test performance or support for its context-gate and prototype
-   mechanisms.
+   mechanisms;
+7. V5 official-test performance or universal ASR robustness.
 
 Machine-readable tables and reproducible figures are under `results/` and
 `docs/figures/`.

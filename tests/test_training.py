@@ -14,6 +14,7 @@ from bimer.training import (
     validation_selection_score,
 )
 from bimer.v4_model import AdaptiveContextPrototypeFusion
+from bimer.v5_model import ASRConsistentQualityFusion
 
 
 def _example(dataset: str, length: int, language_id: int) -> DialogueExample:
@@ -182,6 +183,51 @@ def test_train_epoch_combines_corrupted_classification_and_gate_ranking():
     )
 
     assert np.isfinite(loss)
+
+
+def test_train_epoch_applies_asr_consistency_to_clean_whisper_pairs():
+    clean = _example("meld", 3, 0)
+    whisper = DialogueExample(
+        dataset=clean.dataset,
+        sample_ids=clean.sample_ids,
+        text=-clean.text,
+        audio=clean.audio.copy(),
+        vision=clean.vision.copy(),
+        modality_mask=clean.modality_mask.copy(),
+        labels=clean.labels.copy(),
+        language_id=clean.language_id,
+        modality_quality=np.asarray(clean.modality_quality).copy(),
+    )
+    paired = collate_corruption_pairs([CorruptionPair(clean, whisper, "text")])
+    model = ASRConsistentQualityFusion(
+        text_dim=4,
+        audio_dim=6,
+        vision_dim=5,
+        d_model=8,
+        num_heads=2,
+        transformer_layers=1,
+        transformer_ffn_dim=16,
+        context_hidden_dim=4,
+        num_classes=2,
+        dropout=0.0,
+        modality_dropout=0.0,
+        use_language_embedding=False,
+    )
+    optimizer = torch.optim.AdamW(model.parameters(), lr=0.01)
+    before = model.text_adapter.output_projection.weight.detach().clone()
+
+    loss = train_epoch(
+        model,
+        [collate_dialogues([clean])],
+        optimizer,
+        device=torch.device("cpu"),
+        paired_batches=[paired],
+        corrupted_classification_weight=0.5,
+        asr_consistency_weight=0.1,
+    )
+
+    assert np.isfinite(loss)
+    assert not torch.equal(before, model.text_adapter.output_projection.weight.detach())
 
 
 def test_evaluation_ignores_padding_and_reports_gates():

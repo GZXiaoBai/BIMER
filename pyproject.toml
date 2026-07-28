@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bimer"
-version = "0.1.0"
+version = "1.1.0"
 description = "Bilingual multimodal emotion recognition for dialogues"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -54,7 +54,7 @@ branch = true
 source = ["bimer"]
 
 [tool.coverage.report]
-fail_under = 80
+fail_under = 85
 show_missing = true
 skip_covered = true
 
@@ -64,7 +64,13 @@ target-version = "py311"
 extend-exclude = ["artifacts", "data", ".tools", ".superpowers"]
 
 [tool.ruff.lint]
-select = ["E4", "E7", "E9", "F", "I"]
+select = ["ARG", "B", "C901", "E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 60
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ARG"]
 
 [tool.mypy]
 python_version = "3.11"

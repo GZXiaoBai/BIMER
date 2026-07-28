@@ -23,6 +23,7 @@ PRIVATE_ASSET_PATHS = (
     Path("artifacts/acceptance/m2-v2-english-low-memory-20260727"),
     Path("artifacts/acceptance/m2-v2-bilingual-cao-dewang-20260727"),
     Path("artifacts/cloud-downloads/v4-formal-20260727/bimer-v4-results.tar.gz"),
+    Path("artifacts/cloud-downloads/v5-screen-20260728/bimer-v5-results.tar.gz"),
     Path("artifacts/exports/m2-smoke-en"),
     Path("artifacts/external/videos"),
     Path("artifacts/external/annotation-handoff"),
@@ -197,11 +198,19 @@ exec open "$ROOT/artifacts/external/annotation-handoff"
         destination / "09-检查双人标注.command",
         preamble
         + """
+printf "确认两份标注由两名真人独立完成、期间互未查看对方结果？输入 YES 继续："
+read -r confirmation
+if [[ "$confirmation" != "YES" ]]; then
+  echo "未确认独立标注；不会计算 Cohen's kappa。"
+  exit 2
+fi
 exec "$ROOT/.venv/bin/python" "$ROOT/scripts/check_external_annotations.py" \
+  --master "$ROOT/artifacts/external/annotation-handoff/00-segments-and-asr.csv" \
   --annotator-one "$ROOT/artifacts/external/annotation-handoff/01-annotator-one.csv" \
   --annotator-two "$ROOT/artifacts/external/annotation-handoff/02-annotator-two.csv" \
   --adjudication "$ROOT/artifacts/external/annotation-handoff/03-adjudication.csv" \
-  --report "$ROOT/artifacts/external/annotation-handoff/agreement-report.json"
+  --report "$ROOT/artifacts/external/annotation-handoff/agreement-report.json" \
+  --confirm-independent
 """,
     )
 
@@ -215,7 +224,7 @@ def write_readme(destination: Path) -> None:
 - XLM-R、XLS-R、R3D-18、faster-whisper-small 与 YuNet 离线资产；
 - 当前 Python 3.11 虚拟环境；
 - 已记录来源与哈希的中文制造业人脸访谈、英文无人脸样例和预生成结果；
-- V4 探索性结果原始包与双语低内存 M2 实测证据；
+- V4 正式探索结果、V5 验证阶段结果原始包与双语低内存 M2 实测证据；
 - 20 段锁定的中英文外测素材、许可来源、哈希和独立双人标注表；
 - 真实最终系统中文备用录屏；
 - 经过校验的源码、配置、测试和依赖锁。
@@ -234,6 +243,8 @@ def write_readme(destination: Path) -> None:
 - 20 段外测素材已锁定：中英文各 10 段、五类条件各 2 段，许可、时长和
   SHA-256 均已校验。
 - 备用录屏已完成，位于 `output/deliverables/BIMER-中文离线演示.mp4`。
+- V5 验证阶段结果原始包已归档并校验；V5 未运行三随机种子或官方测试，
+  V2 仍是唯一部署模型。
 - 重启后系统级 swap 验收已自动化，双击 `06-重启后最终验收.command` 即可。
 
 ## 仍需两次人工动作

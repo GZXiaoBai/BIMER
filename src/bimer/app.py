@@ -90,7 +90,7 @@ def result_summary_markdown(result: AnalysisResult) -> str:
 
 def timeline_figure(result: AnalysisResult):
     figure, axis = plt.subplots(figsize=(12, 2.8))
-    for index, segment in enumerate(result.segments):
+    for segment in result.segments:
         width = segment.end_seconds - segment.start_seconds
         axis.barh(
             [0],
@@ -208,8 +208,9 @@ def create_app(
     def run_transcription(
         video: str,
         requested_language: str,
-        progress=gr.Progress(),
+        progress=None,
     ):
+        progress = progress or gr.Progress()
         if not video:
             raise gr.Error("请先上传视频")
         progress(0.05, desc="正在检查视频并加载转写任务")
@@ -224,8 +225,9 @@ def create_app(
         video: str,
         detected_language: str,
         rows: Any,
-        progress=gr.Progress(),
+        progress=None,
     ):
+        progress = progress or gr.Progress()
         if not video:
             raise gr.Error("请先上传视频")
         segments = _rows_to_segments(rows)

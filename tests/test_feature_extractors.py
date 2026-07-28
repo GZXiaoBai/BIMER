@@ -3,14 +3,19 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import numpy as np
+import pytest
 import torch
 
 from bimer.feature_extractors import (
     AudioFeatureExtractor,
     VisionFeatureExtractor,
+    YuNetFaceCropper,
+    _prepare_clip_tensor,
     mean_pool_hidden,
+    prepare_audio_waveforms,
     prepare_video_clip,
     prepare_video_clip_with_quality,
+    prepare_video_segment_with_quality,
     read_uniform_video_frames,
     read_uniform_video_segment_frames,
     uniform_frame_indices,
@@ -319,3 +324,171 @@ def test_prepare_video_clip_returns_continuous_visual_quality(monkeypatch):
     assert clip.shape == (16, 112, 112, 3)
     assert available is True
     np.testing.assert_allclose(quality, [1.0, 1.0, 1.0, 0.25])
+
+
+def test_feature_extractors_validate_empty_and_invalid_batches():
+    with pytest.raises(ValueError, match="minimum_samples"):
+        prepare_audio_waveforms([np.ones(2)], minimum_samples=0)
+    prepared, available = prepare_audio_waveforms(
+        [np.ones(399), np.ones(400)],
+    )
+    assert [len(item) for item in prepared] == [400, 400]
+    assert available.tolist() == [False, True]
+    with pytest.raises(ValueError, match="positive"):
+        uniform_frame_indices(0)
+
+    assert AudioFeatureExtractor.__new__(AudioFeatureExtractor).encode([]).shape == (
+        0,
+        1024,
+    )
+    with pytest.raises(ValueError, match="batch_size"):
+        AudioFeatureExtractor.__new__(AudioFeatureExtractor).encode(
+            [np.ones(400)],
+            batch_size=0,
+        )
+    with pytest.raises(ValueError, match="16 RGB"):
+        _prepare_clip_tensor([np.zeros((2, 2, 2, 3), dtype=np.uint8)])
+    with pytest.raises(ValueError, match="batch_size"):
+        VisionFeatureExtractor.__new__(VisionFeatureExtractor).encode_clips(
+            [],
+            batch_size=0,
+        )
+
+
+def test_video_readers_report_open_metadata_and_frame_failures(monkeypatch):
+    class ClosedCapture:
+        def isOpened(self):
+            return False
+
+        def release(self):
+            self.released = True
+
+    fake_cv2 = SimpleNamespace(
+        CAP_PROP_FRAME_COUNT=7,
+        CAP_PROP_FPS=5,
+        CAP_PROP_POS_FRAMES=1,
+        VideoCapture=lambda _path: ClosedCapture(),
+    )
+    monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
+    with pytest.raises(RuntimeError, match="Cannot open"):
+        read_uniform_video_frames("closed.mp4")
+    with pytest.raises(RuntimeError, match="Cannot open"):
+        read_uniform_video_segment_frames(
+            "closed.mp4",
+            start_seconds=0,
+            end_seconds=1,
+        )
+    with pytest.raises(ValueError, match="timestamps"):
+        read_uniform_video_segment_frames(
+            "closed.mp4",
+            start_seconds=1,
+            end_seconds=1,
+        )
+
+    class BadCapture:
+        def __init__(self, *, frames: int, fps: int, readable: bool = True):
+            self.frames = frames
+            self.fps = fps
+            self.readable = readable
+
+        def isOpened(self):
+            return True
+
+        def get(self, prop):
+            return self.frames if prop == 7 else self.fps
+
+        def set(self, _prop, _value):
+            pass
+
+        def read(self):
+            return self.readable, None
+
+        def release(self):
+            pass
+
+    fake_cv2.VideoCapture = lambda _path: BadCapture(frames=0, fps=0)
+    with pytest.raises(RuntimeError, match="no readable frames"):
+        read_uniform_video_frames("empty.mp4")
+    with pytest.raises(RuntimeError, match="invalid frame metadata"):
+        read_uniform_video_segment_frames(
+            "bad-meta.mp4",
+            start_seconds=0,
+            end_seconds=1,
+        )
+
+    fake_cv2.VideoCapture = lambda _path: BadCapture(frames=2, fps=1, readable=False)
+    with pytest.raises(RuntimeError, match="Cannot read frame"):
+        read_uniform_video_frames("broken.mp4", count=1)
+    with pytest.raises(RuntimeError, match="Cannot read frame"):
+        read_uniform_video_segment_frames(
+            "broken.mp4",
+            start_seconds=0,
+            end_seconds=1,
+            count=1,
+        )
+
+
+def test_yunet_cropper_handles_no_face_and_largest_face(monkeypatch):
+    class Detector:
+        def setInputSize(self, size):
+            self.size = size
+
+        def detect(self, _frame):
+            return None, self.faces
+
+    detector = Detector()
+    fake_cv2 = SimpleNamespace(
+        FaceDetectorYN=SimpleNamespace(create=lambda *_args: detector),
+    )
+    monkeypatch.setitem(sys.modules, "cv2", fake_cv2)
+    cropper = YuNetFaceCropper("yunet.onnx")
+    frame = np.zeros((8, 12, 3), dtype=np.uint8)
+
+    detector.faces = None
+    crop, found, bbox = cropper.crop_largest_with_metadata(frame)
+    assert crop.shape == (8, 8, 3)
+    assert found is False and bbox is None
+
+    detector.faces = np.asarray(
+        [[1, 1, 2, 2, 0.9], [2, 1, 6, 4, 0.8]],
+        dtype=np.float32,
+    )
+    crop, found = cropper.crop_largest(frame)
+    assert crop.size > 0
+    assert found is True
+
+
+def test_segment_preparation_and_video_wrappers_cover_quality_paths(monkeypatch):
+    frames = np.ones((16, 8, 8, 3), dtype=np.uint8)
+    monkeypatch.setattr(
+        "bimer.feature_extractors.read_uniform_video_segment_frames",
+        lambda *_args, **_kwargs: frames,
+    )
+
+    class Cropper:
+        def crop_largest_with_metadata(self, frame):
+            return frame, True, (0.1, 0.1, 0.5, 0.5)
+
+    clip, available, quality = prepare_video_segment_with_quality(
+        "video.mp4",
+        start_seconds=0,
+        end_seconds=1,
+        face_cropper=Cropper(),
+        frame_drop_fraction=0.25,
+    )
+    assert clip.shape == (16, 112, 112, 3)
+    assert available is True
+    assert quality.shape == (4,)
+
+    extractor = VisionFeatureExtractor.__new__(VisionFeatureExtractor)
+    extractor.encode_video_with_quality = lambda *_args, **_kwargs: (
+        np.ones((1, 512), dtype=np.float32),
+        True,
+        quality,
+    )
+    feature, available = extractor.encode_video(
+        "video.mp4",
+        face_cropper=Cropper(),
+    )
+    assert feature.shape == (1, 512)
+    assert available is True

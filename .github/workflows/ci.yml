@@ -37,12 +37,20 @@ jobs:
           src/bimer/integrity.py
           src/bimer/runtime.py
           src/bimer/calibration.py
+          src/bimer/inference.py
+          src/bimer/training.py
+          src/bimer/experiment.py
+          src/bimer/experiment_protocol.py
+          src/bimer/external_evaluation.py
+          src/bimer/external_annotation_pack.py
+          src/bimer/v5_model.py
+          src/bimer/v5_protocol.py
       - name: Tests and coverage
         run: >-
           uv run python -m pytest
           --cov=bimer
           --cov-report=term-missing
-          --cov-fail-under=80
+          --cov-fail-under=85
       - name: Dependency audit
         run: uv run pip-audit
 

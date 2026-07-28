@@ -76,6 +76,7 @@ def vision_quality(
             stability = 0.5
         else:
             center_jitter = float(np.linalg.norm(np.std(centers, axis=0)))
-            area_jitter = float(np.std(areas) / max(np.mean(areas), 1e-6))
+            mean_area = float(np.mean(areas))
+            area_jitter = float(np.std(areas)) / max(mean_area, 1e-6)
             stability = float(np.exp(-(4.0 * center_jitter + 2.0 * area_jitter)))
     return _bounded((face_ratio, decoded_ratio, stability, area))

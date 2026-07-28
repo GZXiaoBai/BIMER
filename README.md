@@ -6,6 +6,8 @@ BIMER 联合文本、语音和视频特征，对中英文对话进行七分类�
 
 正式系统固定采用 V2 `quality_lagf` seed 42。V3 的类别损失与配对门控排序改进均未通过预先声明的验证集门槛，作为负结果保留。V4 轻量文本适配在验证集上取得明显提升，但没有通过全部少数类稳定性门槛，因此没有访问官方测试集，也没有替换 V2。完整数字、统计边界与可复核聚合文件见 [RESULTS.md](RESULTS.md)。
 
+V5 仅针对已确认的 Whisper 转写退化进行事后探索，采用质量条件文本残差适配器与人工/Whisper 配对一致性损失。两个 seed-42 候选都改善了 MELD 的 Whisper 验证表现，但双语平均增益不足 1.5 个百分点，EmotionTalk 未提升，且 50% 视频丢帧退化超过门槛；因此按预声明规则停止，不运行三种子或官方测试。完整结果见 [V5探索结果](docs/v5_exploratory_results.md)，v1.1.0 答辩系统仍部署 V2。
+
 > 本仓库不包含受许可约束的数据集或训练权重。EmotionTalk 下载前必须在 Hugging Face 接受其学术使用条款。模型结果仅用于研究，不构成心理或医疗判断。
 
 ## 研究结论
@@ -51,6 +53,7 @@ python -m pip install -e '.[dev,inference]'
 严格复现使用已提交的 Python 3.11 与 `uv.lock`：
 
 ```bash
+python3.11 -m pip install uv
 uv sync --extra dev --extra inference --frozen
 ```
 
@@ -207,7 +210,7 @@ bimer analyze \
 ```bash
 uv sync --extra dev --extra inference --frozen
 uv run python scripts/check_public_tree.py --root .
-uv run pytest --cov=bimer --cov-fail-under=80
+uv run pytest --cov=bimer --cov-fail-under=85
 ```
 
 测试使用合成特征，不需要下载模型和数据集。
@@ -234,3 +237,9 @@ results/            可公开复核的聚合结果，不含逐样本记录
 data/               本地清单；原始数据默认不纳入Git
 artifacts/          特征、检查点、实验结果和导出文件
 ```
+
+最终交付前请同时核对：
+
+- [学校论文模板迁移清单](docs/school-template-mapping.md)
+- [v1.1.0 Release Checklist](docs/releases/v1.1.0-checklist.md)
+- [最终交付状态](docs/final_delivery_status.md)

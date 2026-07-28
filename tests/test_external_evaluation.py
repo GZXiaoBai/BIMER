@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -6,6 +9,7 @@ from bimer.external_evaluation import (
     annotation_agreement,
     evaluate_external_predictions,
     external_model_acceptance,
+    lock_external_video_plan,
     v3_external_acceptance,
     validate_external_video_plan,
 )
@@ -104,3 +108,128 @@ def test_external_evaluation_and_v3_acceptance_use_video_clusters():
     acceptance = v3_external_acceptance(v2, v3)
     assert acceptance["accepted"] is True
     assert external_model_acceptance(v2, v3) == acceptance
+
+
+def test_lock_external_video_plan_hashes_and_validates_all_inputs(
+    tmp_path: Path,
+) -> None:
+    paths = []
+    languages = []
+    conditions = []
+    bases = []
+    references = []
+    for index, video in enumerate(_plan()):
+        path = tmp_path / f"{index:02d}.mp4"
+        path.write_bytes(f"video-{index}".encode())
+        paths.append(path)
+        languages.append(video.language)
+        conditions.append(video.condition)
+        bases.append(video.authorization_basis)
+        references.append(video.authorization_reference)
+
+    output = lock_external_video_plan(
+        paths,
+        languages=languages,
+        conditions=conditions,
+        durations=[45.0] * 20,
+        authorization_bases=bases,
+        authorization_references=references,
+        output_path=tmp_path / "locked" / "plan.json",
+    )
+
+    payload = json.loads(output.read_text(encoding="utf-8"))
+    assert payload["validation"]["locked"] is True
+    assert len(payload["videos"]) == 20
+    assert all(len(video["sha256"]) == 64 for video in payload["videos"])
+
+    with pytest.raises(ValueError, match="equal length"):
+        lock_external_video_plan(
+            paths,
+            languages=languages[:-1],
+            conditions=conditions,
+            durations=[45.0] * 20,
+            authorization_bases=bases,
+            authorization_references=references,
+            output_path=tmp_path / "invalid.json",
+        )
+
+
+@pytest.mark.parametrize(
+    ("replacement", "message"),
+    [
+        ({"language": "fr"}, "language"),
+        ({"condition": "studio"}, "condition"),
+        ({"authorization_basis": "unknown"}, "authorization basis"),
+        ({"authorization_reference": "  "}, "reference"),
+        ({"duration_seconds": 29.0}, "30-60"),
+        ({"sha256": "ABC"}, "lowercase digest"),
+    ],
+)
+def test_external_plan_rejects_invalid_metadata(replacement, message):
+    plan = _plan()
+    original = plan[0]
+    values = {
+        "video_id": original.video_id,
+        "path": original.path,
+        "sha256": original.sha256,
+        "language": original.language,
+        "condition": original.condition,
+        "duration_seconds": original.duration_seconds,
+        "authorization_basis": original.authorization_basis,
+        "authorization_reference": original.authorization_reference,
+    }
+    values.update(replacement)
+    plan[0] = ExternalVideo(**values)
+
+    with pytest.raises(ValueError, match=message):
+        validate_external_video_plan(plan)
+
+
+def test_external_plan_rejects_duplicate_ids_and_unbalanced_conditions():
+    duplicate = _plan()
+    duplicate[1] = ExternalVideo(
+        **{
+            field: (duplicate[0].video_id if field == "video_id" else getattr(duplicate[1], field))
+            for field in ExternalVideo.__dataclass_fields__
+        }
+    )
+    with pytest.raises(ValueError, match="unique"):
+        validate_external_video_plan(duplicate)
+
+    unbalanced = _plan()
+    first = unbalanced[0]
+    unbalanced[0] = ExternalVideo(
+        **{
+            field: ("background_noise" if field == "condition" else getattr(first, field))
+            for field in ExternalVideo.__dataclass_fields__
+        }
+    )
+    with pytest.raises(ValueError, match="two videos"):
+        validate_external_video_plan(unbalanced)
+
+
+def test_external_annotation_and_prediction_inputs_are_validated():
+    with pytest.raises(ValueError, match="non-empty"):
+        annotation_agreement([], [])
+    with pytest.raises(ValueError, match="aligned"):
+        annotation_agreement(["joy"], ["joy", "sadness"])
+
+    truth = np.asarray([0, 1])
+    probabilities = np.asarray([[0.8, 0.2], [0.2, 0.8]])
+    with pytest.raises(ValueError, match="align"):
+        evaluate_external_predictions(
+            truth,
+            probabilities,
+            video_ids=np.asarray(["v0"]),
+            conditions=np.asarray(["normal_face", "normal_face"]),
+            label_names=("neutral", "joy"),
+        )
+    with pytest.raises(ValueError, match="positive"):
+        evaluate_external_predictions(
+            truth,
+            probabilities,
+            video_ids=np.asarray(["v0", "v1"]),
+            conditions=np.asarray(["normal_face", "normal_face"]),
+            label_names=("neutral", "joy"),
+            bootstrap_iterations=0,
+        )

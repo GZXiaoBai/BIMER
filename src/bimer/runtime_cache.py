@@ -80,7 +80,7 @@ class RuntimeFeatureCache:
             with os.fdopen(descriptor, "wb") as handle:
                 np.savez_compressed(
                     handle,
-                    **{name: np.asarray(value) for name, value in arrays.items()},
+                    **{name: np.asarray(value) for name, value in arrays.items()},  # type: ignore[arg-type]
                 )
                 handle.flush()
                 os.fsync(handle.fileno())

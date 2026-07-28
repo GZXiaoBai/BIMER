@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Iterator, Sequence
+from typing import TYPE_CHECKING, Iterable, Iterator, Sequence, cast
 
 import numpy as np
 import torch
@@ -76,6 +76,7 @@ def train_epoch(
     gate_ranking_weight: float = 0.0,
     gate_ranking_margin: float = 0.10,
     prototype_loss_weight: float = 0.0,
+    asr_consistency_weight: float = 0.0,
 ) -> float:
     return _train_epoch_report(
         model,
@@ -91,6 +92,7 @@ def train_epoch(
         gate_ranking_weight=gate_ranking_weight,
         gate_ranking_margin=gate_ranking_margin,
         prototype_loss_weight=prototype_loss_weight,
+        asr_consistency_weight=asr_consistency_weight,
     ).loss
 
 
@@ -102,6 +104,7 @@ class TrainEpochReport:
     corrupted_classification_loss: float
     gate_ranking_loss: float
     prototype_loss: float
+    asr_consistency_loss: float
 
 
 def _train_epoch_report(
@@ -119,10 +122,17 @@ def _train_epoch_report(
     gate_ranking_weight: float = 0.0,
     gate_ranking_margin: float = 0.10,
     prototype_loss_weight: float = 0.0,
+    asr_consistency_weight: float = 0.0,
 ) -> TrainEpochReport:
     from .paired_training import gate_ranking_loss
+    from .v5_model import jensen_shannon_consistency_loss
 
-    if corrupted_classification_weight < 0 or gate_ranking_weight < 0 or prototype_loss_weight < 0:
+    if (
+        corrupted_classification_weight < 0
+        or gate_ranking_weight < 0
+        or prototype_loss_weight < 0
+        or asr_consistency_weight < 0
+    ):
         raise ValueError("training loss weights must be non-negative")
     model.train()
     losses: list[float] = []
@@ -130,6 +140,7 @@ def _train_epoch_report(
     corrupted_losses: list[float] = []
     ranking_losses: list[float] = []
     prototype_losses: list[float] = []
+    consistency_losses: list[float] = []
     gradient_norms: list[float] = []
     if class_weights is not None:
         class_weights = class_weights.to(device)
@@ -222,8 +233,20 @@ def _train_epoch_report(
                 + corrupted_classification_weight * corrupted_loss
                 + gate_ranking_weight * ranking_loss
             )
+            text_pair_mask = (
+                (pair.corrupted_modality == 0).unsqueeze(-1)
+                & pair.clean.attention_mask
+                & pair.corrupted.attention_mask
+            )
+            consistency_loss = jensen_shannon_consistency_loss(
+                clean_pair_output.logits,
+                corrupted_output.logits,
+                text_pair_mask,
+            )
+            loss = loss + asr_consistency_weight * consistency_loss
             corrupted_losses.append(float(corrupted_loss.detach().cpu()))
             ranking_losses.append(float(ranking_loss.detach().cpu()))
+            consistency_losses.append(float(consistency_loss.detach().cpu()))
         loss.backward()
         gradient_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
@@ -240,6 +263,7 @@ def _train_epoch_report(
         ),
         gate_ranking_loss=(float(np.mean(ranking_losses)) if ranking_losses else 0.0),
         prototype_loss=(float(np.mean(prototype_losses)) if prototype_losses else 0.0),
+        asr_consistency_loss=(float(np.mean(consistency_losses)) if consistency_losses else 0.0),
     )
 
 
@@ -345,7 +369,7 @@ def validation_selection_score(
     datasets: Sequence[str] = ("meld", "emotiontalk"),
 ) -> float:
     try:
-        scores = [float(reports[dataset]["weighted_f1"]) for dataset in datasets]
+        scores = [float(cast(float | int, reports[dataset]["weighted_f1"])) for dataset in datasets]
     except KeyError as exc:
         raise ValueError("validation reports do not include every selection dataset") from exc
     if not scores:
@@ -366,6 +390,7 @@ class FitConfig:
     gate_ranking_weight: float = 0.0
     gate_ranking_margin: float = 0.10
     prototype_loss_weight: float = 0.0
+    asr_consistency_weight: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -382,6 +407,7 @@ class EpochSummary:
     corrupted_classification_loss: float
     gate_ranking_loss: float
     prototype_loss: float
+    asr_consistency_loss: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -444,6 +470,7 @@ def fit_model(
             gate_ranking_weight=config.gate_ranking_weight,
             gate_ranking_margin=config.gate_ranking_margin,
             prototype_loss_weight=config.prototype_loss_weight,
+            asr_consistency_weight=config.asr_consistency_weight,
         )
         validation: dict[str, dict[str, object]] = {}
         prediction_histograms: dict[str, tuple[int, ...]] = {}
@@ -476,6 +503,7 @@ def fit_model(
                 corrupted_classification_loss=(train_report.corrupted_classification_loss),
                 gate_ranking_loss=train_report.gate_ranking_loss,
                 prototype_loss=train_report.prototype_loss,
+                asr_consistency_loss=train_report.asr_consistency_loss,
             )
         )
         if score > best_score:

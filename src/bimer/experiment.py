@@ -4,14 +4,16 @@ import json
 import random
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Iterable, Literal, Sequence, cast
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Sampler
 
+from .batching import DialogueExample, MultimodalBatch
 from .experiment_data import build_dialogue_examples
-from .feature_store import FeatureStore
+from .experiment_protocol import ExperimentProtocolRunner, ProtocolSpec
+from .feature_store import FeatureShard, FeatureStore
 from .labels import EMOTION_LABELS, emotion_index
 from .losses import sqrt_inverse_class_weights
 from .manifest import read_manifest
@@ -20,6 +22,9 @@ from .model_factory import build_model
 from .normalization import NormalizedModel, compute_input_statistics
 from .paired_training import (
     BalancedCorruptionPairSampler,
+    CorruptionPair,
+    ModalityName,
+    PairedMultimodalBatch,
     build_corruption_pairs,
     collate_corruption_pairs,
 )
@@ -63,6 +68,7 @@ class ExperimentConfig:
     gate_ranking_weight: float = 0.0
     gate_ranking_margin: float = 0.10
     prototype_loss_weight: float = 0.0
+    asr_consistency_weight: float = 0.0
     prototype_temperature: float = 0.07
     use_adaptive_context_gate: bool = True
     context_gate_override: float | None = None
@@ -93,13 +99,21 @@ def _split_name(dataset: str, role: str) -> str:
     return role
 
 
-def _loader(examples, *, batch_size: int, sampler=None):
-    return DataLoader(
-        examples,
-        batch_size=batch_size,
-        sampler=sampler,
-        shuffle=False,
-        collate_fn=collate_dialogues,
+def _loader(
+    examples: Sequence[DialogueExample],
+    *,
+    batch_size: int,
+    sampler: Sampler[int] | None = None,
+) -> DataLoader[MultimodalBatch]:
+    return cast(
+        DataLoader[MultimodalBatch],
+        DataLoader(
+            cast(Any, examples),
+            batch_size=batch_size,
+            sampler=sampler,
+            shuffle=False,
+            collate_fn=collate_dialogues,
+        ),
     )
 
 
@@ -111,22 +125,42 @@ def run_experiment(
     config: ExperimentConfig,
     device_name: str = "auto",
 ) -> Path:
+    spec = ProtocolSpec.from_config(config)
+    output = Path(output_directory)
+    result_path = (
+        output / config.model / config.training_scope / f"seed-{config.seed}" / "results.json"
+    )
+    status_path = (
+        output
+        / "_protocol"
+        / f"{spec.stage}-{config.model}-{config.training_scope}-seed-{config.seed}.json"
+    )
+    runner = ExperimentProtocolRunner(
+        spec,
+        status_path=status_path,
+        result_path=result_path,
+    )
+    result = runner.run(
+        lambda: _run_experiment_impl(
+            manifest_path=manifest_path,
+            feature_root=feature_root,
+            output_directory=output_directory,
+            config=config,
+            device_name=device_name,
+        )
+    )
+    return Path(result)
+
+
+def _run_experiment_impl(
+    *,
+    manifest_path: Path | str,
+    feature_root: Path | str,
+    output_directory: Path | str,
+    config: ExperimentConfig,
+    device_name: str = "auto",
+) -> Path:
     set_reproducible_seed(config.seed)
-    if config.protocol_stage == "v3_screen":
-        if config.seed != 42:
-            raise ValueError("v3_screen is restricted to seed 42")
-        if config.evaluate_test:
-            raise ValueError("v3_screen must use --skip-test")
-    elif config.protocol_stage == "v4_screen":
-        if config.seed != 42:
-            raise ValueError("v4_screen is restricted to seed 42")
-        if config.evaluate_test:
-            raise ValueError("v4_screen must use --skip-test")
-    elif config.protocol_stage == "v4_formal":
-        if config.evaluate_test:
-            raise ValueError("v4_formal must use --skip-test")
-    elif config.protocol_stage not in {"standard", "v3_formal"}:
-        raise ValueError("unknown experiment protocol_stage")
     if config.training_scope not in {"joint", "meld", "emotiontalk"}:
         raise ValueError("training_scope must be joint, meld, or emotiontalk")
     if len(config.augmentation_manifests) != len(config.augmentation_feature_roots):
@@ -147,12 +181,15 @@ def run_experiment(
         or config.gate_ranking_weight < 0
         or config.gate_ranking_margin < 0
         or config.prototype_loss_weight < 0
+        or config.asr_consistency_weight < 0
     ):
         raise ValueError("training objective weights and margin must be non-negative")
     if config.prototype_temperature <= 0:
         raise ValueError("prototype_temperature must be positive")
     if config.gate_ranking_weight > 0 and not paired_requested:
         raise ValueError("gate ranking requires paired augmentations")
+    if config.asr_consistency_weight > 0 and not paired_requested:
+        raise ValueError("ASR consistency requires paired augmentations")
     if paired_requested and len(config.augmentation_modalities) != len(
         config.augmentation_manifests
     ):
@@ -221,13 +258,14 @@ def run_experiment(
         example for dataset in training_datasets for example in examples[(dataset, "train")]
     ]
     train_examples = list(clean_train_examples)
-    augmentation_shards = []
+    augmentation_shards: list[FeatureShard] = []
     augmentation_summaries: list[dict[str, object]] = []
-    corruption_pairs = []
+    corruption_pairs: list[CorruptionPair] = []
     for augmentation_index, (manifest_name, feature_name) in enumerate(
         zip(
             config.augmentation_manifests,
             config.augmentation_feature_roots,
+            strict=True,
         )
     ):
         augmentation_records = read_manifest(manifest_name)
@@ -257,7 +295,10 @@ def run_experiment(
         if not view_examples:
             raise ValueError("augmentation manifest contains no usable training records")
         if paired_requested:
-            modality = config.augmentation_modalities[augmentation_index]
+            modality = cast(
+                ModalityName,
+                config.augmentation_modalities[augmentation_index],
+            )
             severity = (
                 config.augmentation_severities[augmentation_index]
                 if config.augmentation_severities
@@ -286,20 +327,23 @@ def run_experiment(
         )
     sampler = BalancedDialogueSampler(train_examples, seed=config.seed)
     train_loader = _loader(train_examples, batch_size=config.batch_size, sampler=sampler)
-    paired_train_loader = None
+    paired_train_loader: DataLoader[PairedMultimodalBatch] | None = None
     if corruption_pairs:
         paired_sampler = BalancedCorruptionPairSampler(
-            corruption_pairs,
+            cast(Any, corruption_pairs),
             seed=config.seed,
         )
-        paired_train_loader = DataLoader(
-            corruption_pairs,
-            batch_size=config.batch_size,
-            sampler=paired_sampler,
-            shuffle=False,
-            collate_fn=collate_corruption_pairs,
+        paired_train_loader = cast(
+            DataLoader[PairedMultimodalBatch],
+            DataLoader(
+                cast(Any, corruption_pairs),
+                batch_size=config.batch_size,
+                sampler=paired_sampler,
+                shuffle=False,
+                collate_fn=collate_corruption_pairs,
+            ),
         )
-    validation_loaders = {
+    validation_loaders: dict[str, Iterable[MultimodalBatch]] = {
         dataset: _loader(examples[(dataset, "validation")], batch_size=config.batch_size)
         for dataset in selection_datasets
     }
@@ -371,6 +415,7 @@ def run_experiment(
                 gate_ranking_weight=config.gate_ranking_weight,
                 gate_ranking_margin=config.gate_ranking_margin,
                 prototype_loss_weight=config.prototype_loss_weight,
+                asr_consistency_weight=config.asr_consistency_weight,
             ),
             device=device,
             class_weights=(
@@ -416,7 +461,7 @@ def run_experiment(
             [context_id_by_sample[sample_id] for sample_id in report.sample_ids],
             dtype=str,
         )
-        prediction_payload = {
+        validation_prediction_payload: dict[str, np.ndarray] = {
             "sample_ids": np.asarray(report.sample_ids, dtype=str),
             "context_ids": validation_context_ids,
             "languages": np.asarray(
@@ -432,20 +477,26 @@ def run_experiment(
             "context_lengths": report.context_lengths.astype(np.int64),
         }
         if report.context_gates is not None:
-            prediction_payload["context_gates"] = report.context_gates.astype(np.float32)
+            validation_prediction_payload["context_gates"] = report.context_gates.astype(np.float32)
         if report.prototype_logits is not None:
-            prediction_payload["prototype_logits"] = report.prototype_logits.astype(np.float32)
+            validation_prediction_payload["prototype_logits"] = report.prototype_logits.astype(
+                np.float32
+            )
         if report.representations is not None:
-            prediction_payload["representations"] = report.representations.astype(np.float32)
+            validation_prediction_payload["representations"] = report.representations.astype(
+                np.float32
+            )
         if report.local_prediction is not None:
-            prediction_payload["local_prediction"] = report.local_prediction.astype(np.int64)
-        if report.fixed_context_prediction is not None:
-            prediction_payload["fixed_context_prediction"] = report.fixed_context_prediction.astype(
+            validation_prediction_payload["local_prediction"] = report.local_prediction.astype(
                 np.int64
             )
-        np.savez_compressed(
+        if report.fixed_context_prediction is not None:
+            validation_prediction_payload["fixed_context_prediction"] = (
+                report.fixed_context_prediction.astype(np.int64)
+            )
+        cast(Any, np.savez_compressed)(
             validation_prediction_directory / f"{dataset}.npz",
-            **prediction_payload,
+            **validation_prediction_payload,
         )
 
     test_results: dict[str, object] = {}
@@ -470,7 +521,7 @@ def run_experiment(
             "weighted_f1_ci95": list(confidence_interval),
             "bootstrap_unit": "context",
         }
-        prediction_payload = {
+        test_prediction_payload: dict[str, np.ndarray] = {
             "sample_ids": np.asarray(report.sample_ids, dtype=str),
             "context_ids": context_ids,
             "truth": report.truth.astype(np.int64),
@@ -482,20 +533,20 @@ def run_experiment(
             "context_lengths": report.context_lengths.astype(np.int64),
         }
         if report.context_gates is not None:
-            prediction_payload["context_gates"] = report.context_gates.astype(np.float32)
+            test_prediction_payload["context_gates"] = report.context_gates.astype(np.float32)
         if report.prototype_logits is not None:
-            prediction_payload["prototype_logits"] = report.prototype_logits.astype(np.float32)
+            test_prediction_payload["prototype_logits"] = report.prototype_logits.astype(np.float32)
         if report.representations is not None:
-            prediction_payload["representations"] = report.representations.astype(np.float32)
+            test_prediction_payload["representations"] = report.representations.astype(np.float32)
         if report.local_prediction is not None:
-            prediction_payload["local_prediction"] = report.local_prediction.astype(np.int64)
+            test_prediction_payload["local_prediction"] = report.local_prediction.astype(np.int64)
         if report.fixed_context_prediction is not None:
-            prediction_payload["fixed_context_prediction"] = report.fixed_context_prediction.astype(
-                np.int64
+            test_prediction_payload["fixed_context_prediction"] = (
+                report.fixed_context_prediction.astype(np.int64)
             )
-        np.savez_compressed(
+        cast(Any, np.savez_compressed)(
             prediction_directory / f"{dataset}.npz",
-            **prediction_payload,
+            **test_prediction_payload,
         )
 
     payload = {
@@ -544,9 +595,12 @@ def aggregate_seed_results(paths: Sequence[Path | str], output_path: Path | str)
     return path
 
 
-def _without_modality(examples, modality: str):
+def _without_modality(
+    examples: Sequence[DialogueExample],
+    modality: Literal["text", "audio", "vision"],
+) -> list[DialogueExample]:
     index = {"text": 0, "audio": 1, "vision": 2}[modality]
-    updated = []
+    updated: list[DialogueExample] = []
     for example in examples:
         mask = example.modality_mask.copy()
         mask[:, index] = False
@@ -582,10 +636,16 @@ def _normalize_missing_modalities(
     return normalized
 
 
-def _without_modalities(examples, modalities: Sequence[str]):
-    updated = examples
+def _without_modalities(
+    examples: Sequence[DialogueExample],
+    modalities: Sequence[str],
+) -> list[DialogueExample]:
+    updated = list(examples)
     for modality in modalities:
-        updated = _without_modality(updated, modality)
+        updated = _without_modality(
+            updated,
+            cast(Literal["text", "audio", "vision"], modality),
+        )
     return updated
 
 
@@ -654,7 +714,7 @@ def evaluate_checkpoint(
             ),
             "bootstrap_unit": "context",
         }
-        prediction_payload = {
+        prediction_payload: dict[str, np.ndarray] = {
             "sample_ids": np.asarray(report.sample_ids, dtype=str),
             "context_ids": context_ids,
             "truth": report.truth.astype(np.int64),
@@ -677,7 +737,7 @@ def evaluate_checkpoint(
             prediction_payload["fixed_context_prediction"] = report.fixed_context_prediction.astype(
                 np.int64
             )
-        np.savez_compressed(
+        cast(Any, np.savez_compressed)(
             prediction_directory / f"{dataset}.npz",
             **prediction_payload,
         )
