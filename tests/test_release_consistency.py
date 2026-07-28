@@ -29,10 +29,7 @@ def test_v1_release_evidence_manifest_freezes_the_published_baseline() -> None:
 
     assert evidence["schema_version"] == 1
     assert evidence["release"]["tag"] == "v1.0.0"
-    assert (
-        evidence["release"]["commit"]
-        == "57f5a86a4638f6c4b5c8c9a3458f85432e137e76"
-    )
+    assert evidence["release"]["commit"] == "57f5a86a4638f6c4b5c8c9a3458f85432e137e76"
     assert len(evidence["release"]["git_archive_sha256"]) == 64
     assert (
         evidence["deployment"]["checkpoint_sha256"]

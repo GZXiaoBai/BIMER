@@ -21,10 +21,12 @@ from .inference import (
     DialogueAnalyzer,
     LazyExtractor,
     PretrainedFeaturePipeline,
+    RequestedLanguage,
     TranscriptSegment,
 )
 from .model_factory import build_model
 from .runtime_cache import RuntimeFeatureCache
+from .schema import AnalysisResult
 
 
 class DeploymentNotReadyError(RuntimeError):
@@ -59,7 +61,7 @@ class RuntimeSession:
         self._last_language: Literal["zh", "en"] | None = None
 
     @property
-    def feature_pipeline(self):
+    def feature_pipeline(self) -> object:
         return self.analyzer.feature_pipeline
 
     @property
@@ -70,7 +72,11 @@ class RuntimeSession:
         if self._closed:
             raise RuntimeError("runtime session is closed")
 
-    def analyze(self, video_path: Path | str, language: str = "auto"):
+    def analyze(
+        self,
+        video_path: Path | str,
+        language: RequestedLanguage = "auto",
+    ) -> AnalysisResult:
         self._require_open()
         path = Path(video_path)
         result = self.analyzer.analyze(path, language)
@@ -81,7 +87,7 @@ class RuntimeSession:
     def transcribe(
         self,
         video_path: Path | str,
-        language: str = "auto",
+        language: RequestedLanguage = "auto",
     ) -> tuple[Literal["zh", "en"], list[TranscriptSegment]]:
         self._require_open()
         path = Path(video_path)
@@ -96,7 +102,7 @@ class RuntimeSession:
         *,
         detected_language: Literal["zh", "en"],
         segments: Sequence[TranscriptSegment],
-    ):
+    ) -> AnalysisResult:
         self._require_open()
         path = Path(video_path)
         result = self.analyzer.analyze_segments(
@@ -108,7 +114,7 @@ class RuntimeSession:
         self._last_language = detected_language
         return result
 
-    def reanalyze(self, edited_segments: Sequence[SegmentEdit]):
+    def reanalyze(self, edited_segments: Sequence[SegmentEdit]) -> AnalysisResult:
         self._require_open()
         if self._last_video_path is None or self._last_language is None:
             raise RuntimeError("no previous video is available for reanalysis")

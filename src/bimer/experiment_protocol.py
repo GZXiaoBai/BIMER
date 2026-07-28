@@ -11,9 +11,14 @@ T = TypeVar("T")
 
 
 class ExperimentProtocolConfig(Protocol):
-    protocol_stage: str
-    seed: int
-    evaluate_test: bool
+    @property
+    def protocol_stage(self) -> str: ...
+
+    @property
+    def seed(self) -> int: ...
+
+    @property
+    def evaluate_test(self) -> bool: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,7 +145,9 @@ def run_guarded_exploratory_test(
     try:
         descriptor = os.open(claim, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError as exc:
-        raise RuntimeError(f"{version.upper()} official test evaluation is already running") from exc
+        raise RuntimeError(
+            f"{version.upper()} official test evaluation is already running"
+        ) from exc
     os.close(descriptor)
     try:
         result = evaluator()

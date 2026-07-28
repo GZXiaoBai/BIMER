@@ -37,6 +37,11 @@ jobs:
           src/bimer/integrity.py
           src/bimer/runtime.py
           src/bimer/calibration.py
+          src/bimer/inference.py
+          src/bimer/training.py
+          src/bimer/experiment.py
+          src/bimer/experiment_protocol.py
+          src/bimer/external_evaluation.py
       - name: Tests and coverage
         run: >-
           uv run python -m pytest

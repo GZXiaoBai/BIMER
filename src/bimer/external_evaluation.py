@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Sequence, cast
 
 import numpy as np
 from sklearn.metrics import cohen_kappa_score
@@ -204,7 +204,7 @@ def evaluate_external_predictions(
         indices = np.concatenate([np.flatnonzero(clusters == value) for value in sampled])
         metrics = _metric_bundle(labels[indices], scores[indices], label_names)
         for name in bootstrap:
-            bootstrap[name].append(float(metrics[name]))
+            bootstrap[name].append(float(cast(float | int, metrics[name])))
     intervals = {
         name: [
             float(np.quantile(values, 0.025)),
@@ -225,17 +225,21 @@ def external_model_acceptance(
     baseline: dict[str, object],
     candidate: dict[str, object],
 ) -> dict[str, object]:
-    overall_delta = float(candidate["weighted_f1"]) - float(baseline["weighted_f1"])
-    baseline_conditions = baseline["by_condition"]
-    candidate_conditions = candidate["by_condition"]
+    overall_delta = float(cast(float | int, candidate["weighted_f1"])) - float(
+        cast(float | int, baseline["weighted_f1"])
+    )
+    baseline_conditions = cast(dict[str, dict[str, object]], baseline["by_condition"])
+    candidate_conditions = cast(dict[str, dict[str, object]], candidate["by_condition"])
     condition_deltas = {
-        condition: float(candidate_conditions[condition]["weighted_f1"])
-        - float(baseline_conditions[condition]["weighted_f1"])
+        condition: float(cast(float | int, candidate_conditions[condition]["weighted_f1"]))
+        - float(cast(float | int, baseline_conditions[condition]["weighted_f1"]))
         for condition in EXTERNAL_CONDITIONS
     }
     condition_mean = float(np.mean(list(condition_deltas.values())))
     worst_condition = min(condition_deltas.values())
-    ece_delta = float(candidate["ece"]) - float(baseline["ece"])
+    ece_delta = float(cast(float | int, candidate["ece"])) - float(
+        cast(float | int, baseline["ece"])
+    )
     checks = {
         "overall_within_one_point": overall_delta >= -0.01,
         "condition_mean_improves_one_point": condition_mean >= 0.01,

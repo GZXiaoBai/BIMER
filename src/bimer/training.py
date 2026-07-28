@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable, Iterator, Sequence
+from typing import TYPE_CHECKING, Iterable, Iterator, Sequence, cast
 
 import numpy as np
 import torch
@@ -345,7 +345,7 @@ def validation_selection_score(
     datasets: Sequence[str] = ("meld", "emotiontalk"),
 ) -> float:
     try:
-        scores = [float(reports[dataset]["weighted_f1"]) for dataset in datasets]
+        scores = [float(cast(float | int, reports[dataset]["weighted_f1"])) for dataset in datasets]
     except KeyError as exc:
         raise ValueError("validation reports do not include every selection dataset") from exc
     if not scores:

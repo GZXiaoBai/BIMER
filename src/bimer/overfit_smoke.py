@@ -132,8 +132,9 @@ def run_unimodal_overfit_smoke(
     target_accuracy: float = 0.95,
     hidden_dim: int = 64,
     seed: int = 42,
-    device: torch.device = torch.device("cpu"),
+    device: torch.device | None = None,
 ) -> dict[str, object]:
+    device = device or torch.device("cpu")
     if max_epochs <= 0:
         raise ValueError("max_epochs must be positive")
     if learning_rate <= 0:

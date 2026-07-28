@@ -25,22 +25,14 @@ def _config(**changes):
 
 def test_protocol_spec_enforces_screen_and_formal_test_boundaries() -> None:
     ProtocolSpec.from_config(_config(protocol_stage="standard"))
-    ProtocolSpec.from_config(
-        _config(protocol_stage="v3_formal", seed=123, evaluate_test=False)
-    )
+    ProtocolSpec.from_config(_config(protocol_stage="v3_formal", seed=123, evaluate_test=False))
 
     with pytest.raises(ValueError, match="restricted to seed 42"):
-        ProtocolSpec.from_config(
-            _config(protocol_stage="v5_screen", seed=123, evaluate_test=False)
-        )
+        ProtocolSpec.from_config(_config(protocol_stage="v5_screen", seed=123, evaluate_test=False))
     with pytest.raises(ValueError, match="must use --skip-test"):
-        ProtocolSpec.from_config(
-            _config(protocol_stage="v5_screen", seed=42, evaluate_test=True)
-        )
+        ProtocolSpec.from_config(_config(protocol_stage="v5_screen", seed=42, evaluate_test=True))
     with pytest.raises(ValueError, match="must use --skip-test"):
-        ProtocolSpec.from_config(
-            _config(protocol_stage="v5_formal", seed=42, evaluate_test=True)
-        )
+        ProtocolSpec.from_config(_config(protocol_stage="v5_formal", seed=42, evaluate_test=True))
 
 
 def test_protocol_runner_writes_success_and_resumes_existing_result(tmp_path: Path) -> None:
