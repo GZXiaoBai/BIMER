@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "release": {
+    "tag": "v1.0.0",
+    "commit": "57f5a86a4638f6c4b5c8c9a3458f85432e137e76",
+    "published_at": "2026-07-27T13:24:09Z",
+    "url": "https://github.com/GZXiaoBai/BIMER/releases/tag/v1.0.0",
+    "git_archive_sha256": "b1fe9e2addb2ac795f220b0df0d62c5f1655681d80bebe24689ee7b2eeff9268"
+  },
+  "deployment": {
+    "model_version": "v2_quality_lagf",
+    "seed": 42,
+    "checkpoint_sha256": "41ebf8aa84b16fb01f17ea6bc3d26f5f14201c55d9692ba3210b241c8c9464bb",
+    "calibration_sha256": "ad4dc5bbd2d27e9afc7f4fe884269769c46d31ea98f727f60a3217fbed1c13ac"
+  },
+  "research": {
+    "bilingual_weighted_f1": 0.60148,
+    "formal_report_sha256": "385a3a38ecc9c273825b6cd72d42ef5e356af505d6572ec03f191fba2b199ab8",
+    "robustness_report_sha256": "3149211ce3768830045f5354da11b4490c8c7f8504b3bf4a3c14e36f497bc72d"
+  },
+  "policy": {
+    "immutable_baseline": true,
+    "deployment_model_may_not_be_reselected_from_test_scores": true,
+    "private_artifacts_are_identified_by_hash_only": true
+  }
+}

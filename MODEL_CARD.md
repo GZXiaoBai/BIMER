@@ -7,7 +7,7 @@
 - Task: seven-class utterance emotion recognition in Chinese and English
 - Labels: `neutral`, `joy`, `sadness`, `anger`, `surprise`, `fear`, `disgust`
 - Context: up to 32 utterances with an overlap of 8
-- Status: frozen deployment model; V3 is not deployed
+- Status: frozen deployment model; V3 is not deployed and V4 is not deployed
 
 The public deployment manifest records the expected paths, hashes, encoder IDs,
 revisions, calibration parameters and runtime policy. The checkpoint and

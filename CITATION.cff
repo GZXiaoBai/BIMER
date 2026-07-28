@@ -5,8 +5,8 @@ type: software
 authors:
   - family-names: "Zhou"
     given-names: "Junjie"
-version: 0.1.0
-date-released: 2026-07-26
+version: 1.1.0
+date-released: 2026-07-28
 license: Apache-2.0
 abstract: >-
   A research and demonstration system for seven-class Chinese and English

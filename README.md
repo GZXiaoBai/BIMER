@@ -51,6 +51,7 @@ python -m pip install -e '.[dev,inference]'
 严格复现使用已提交的 Python 3.11 与 `uv.lock`：
 
 ```bash
+python3.11 -m pip install uv
 uv sync --extra dev --extra inference --frozen
 ```
 
