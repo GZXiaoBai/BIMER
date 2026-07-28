@@ -121,6 +121,16 @@ def test_majority_experiment_runs_end_to_end_on_cached_features(tmp_path):
         device_name="cpu",
     )
     payload = json.loads(result_path.read_text(encoding="utf-8"))
+    protocol_status = json.loads(
+        (
+            tmp_path
+            / "results"
+            / "_protocol"
+            / "standard-majority-joint-seed-42.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert protocol_status["status"] == "completed"
+    assert protocol_status["result"] == str(result_path)
     assert set(payload["test"]) == {"meld", "emotiontalk"}
     assert payload["test"]["meld"]["bootstrap_unit"] == "context"
     assert (result_path.parent / "best.pt").exists()

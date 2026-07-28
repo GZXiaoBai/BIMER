@@ -14,7 +14,7 @@ from bimer.export import (
     export_analysis_json,
 )
 from bimer.inference import TranscriptSegment
-from bimer.runtime import build_runtime
+from bimer.runtime import build_runtime_session
 from bimer.schema import AnalysisResult
 
 
@@ -68,13 +68,14 @@ def main() -> int:
     )
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    analyzer = build_runtime(
+    session = build_runtime_session(
         args.deployment,
         artifact_root=args.artifact_root,
         device_name="auto",
         offline=True,
     )
-    runtime_cache = getattr(analyzer.feature_pipeline, "cache", None)
+    analyzer = session
+    runtime_cache = getattr(session.feature_pipeline, "cache", None)
     cleared_cache_entries = 0
     if runtime_cache is not None and not args.preserve_runtime_cache:
         cleared_cache_entries = runtime_cache.clear()
@@ -187,6 +188,7 @@ def main() -> int:
         encoding="utf-8",
     )
     print(report)
+    session.close()
     if payload["passed"] or (args.allow_partial and completed_checks_passed):
         return 0
     return 1

@@ -11,6 +11,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from .experiment_data import build_dialogue_examples
+from .experiment_protocol import ExperimentProtocolRunner, ProtocolSpec
 from .feature_store import FeatureStore
 from .labels import EMOTION_LABELS, emotion_index
 from .losses import sqrt_inverse_class_weights
@@ -111,22 +112,40 @@ def run_experiment(
     config: ExperimentConfig,
     device_name: str = "auto",
 ) -> Path:
+    spec = ProtocolSpec.from_config(config)
+    output = Path(output_directory)
+    result_path = output / config.model / config.training_scope / f"seed-{config.seed}" / "results.json"
+    status_path = (
+        output
+        / "_protocol"
+        / f"{spec.stage}-{config.model}-{config.training_scope}-seed-{config.seed}.json"
+    )
+    runner = ExperimentProtocolRunner(
+        spec,
+        status_path=status_path,
+        result_path=result_path,
+    )
+    result = runner.run(
+        lambda: _run_experiment_impl(
+            manifest_path=manifest_path,
+            feature_root=feature_root,
+            output_directory=output_directory,
+            config=config,
+            device_name=device_name,
+        )
+    )
+    return Path(result)
+
+
+def _run_experiment_impl(
+    *,
+    manifest_path: Path | str,
+    feature_root: Path | str,
+    output_directory: Path | str,
+    config: ExperimentConfig,
+    device_name: str = "auto",
+) -> Path:
     set_reproducible_seed(config.seed)
-    if config.protocol_stage == "v3_screen":
-        if config.seed != 42:
-            raise ValueError("v3_screen is restricted to seed 42")
-        if config.evaluate_test:
-            raise ValueError("v3_screen must use --skip-test")
-    elif config.protocol_stage == "v4_screen":
-        if config.seed != 42:
-            raise ValueError("v4_screen is restricted to seed 42")
-        if config.evaluate_test:
-            raise ValueError("v4_screen must use --skip-test")
-    elif config.protocol_stage == "v4_formal":
-        if config.evaluate_test:
-            raise ValueError("v4_formal must use --skip-test")
-    elif config.protocol_stage not in {"standard", "v3_formal"}:
-        raise ValueError("unknown experiment protocol_stage")
     if config.training_scope not in {"joint", "meld", "emotiontalk"}:
         raise ValueError("training_scope must be joint, meld, or emotiontalk")
     if len(config.augmentation_manifests) != len(config.augmentation_feature_roots):
