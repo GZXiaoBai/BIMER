@@ -177,6 +177,7 @@ def build_parser() -> argparse.ArgumentParser:
             "lagf",
             "quality_lagf",
             "adaptive_context_prototype",
+            "asr_consistent_quality_lagf",
         ],
         default="lagf",
     )
@@ -223,6 +224,7 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--gate-ranking-margin", type=float, default=0.10)
     train.add_argument("--prototype-loss-weight", type=float, default=0.0)
     train.add_argument("--prototype-temperature", type=float, default=0.07)
+    train.add_argument("--asr-consistency-weight", type=float, default=0.0)
     train.add_argument("--no-adaptive-context-gate", action="store_true")
     train.add_argument("--context-gate-override", type=float)
     train.add_argument(
@@ -244,6 +246,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--v4-formal",
         action="store_true",
         help="frozen V4 formal training; official test remains separately guarded",
+    )
+    train.add_argument(
+        "--v5-screen",
+        action="store_true",
+        help="seed-42 V5 validation screening; requires --skip-test",
+    )
+    train.add_argument(
+        "--v5-formal",
+        action="store_true",
+        help="frozen V5 formal training; official test remains separately guarded",
     )
     train.add_argument(
         "--skip-test",
@@ -735,14 +747,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "train":
-        protocol_flags = (
-            args.v3_screen,
-            args.v3_formal,
-            args.v4_screen,
-            args.v4_formal,
+        protocol_options = (
+            (args.v3_screen, "v3_screen"),
+            (args.v3_formal, "v3_formal"),
+            (args.v4_screen, "v4_screen"),
+            (args.v4_formal, "v4_formal"),
+            (args.v5_screen, "v5_screen"),
+            (args.v5_formal, "v5_formal"),
         )
-        if sum(bool(flag) for flag in protocol_flags) > 1:
+        active_protocols = [name for enabled, name in protocol_options if enabled]
+        if len(active_protocols) > 1:
             raise ValueError("experiment protocol stage flags are mutually exclusive")
+        protocol_stage = active_protocols[0] if active_protocols else "standard"
         result = run_experiment(
             manifest_path=args.manifest,
             feature_root=args.features,
@@ -774,21 +790,10 @@ def main(argv: list[str] | None = None) -> int:
                 gate_ranking_margin=args.gate_ranking_margin,
                 prototype_loss_weight=args.prototype_loss_weight,
                 prototype_temperature=args.prototype_temperature,
+                asr_consistency_weight=args.asr_consistency_weight,
                 use_adaptive_context_gate=not args.no_adaptive_context_gate,
                 context_gate_override=args.context_gate_override,
-                protocol_stage=(
-                    "v3_screen"
-                    if args.v3_screen
-                    else (
-                        "v3_formal"
-                        if args.v3_formal
-                        else (
-                            "v4_screen"
-                            if args.v4_screen
-                            else ("v4_formal" if args.v4_formal else "standard")
-                        )
-                    )
-                ),
+                protocol_stage=protocol_stage,
             ),
             device_name=args.device,
         )

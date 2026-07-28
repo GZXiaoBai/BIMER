@@ -119,6 +119,32 @@ def test_train_cli_exposes_v4_context_and_prototype_options():
     assert args.v4_screen is True
 
 
+def test_train_cli_exposes_v5_asr_consistency_and_protocol_options():
+    args = build_parser().parse_args(
+        [
+            "train",
+            "--manifest",
+            "manifest.jsonl",
+            "--features",
+            "features",
+            "--output",
+            "results",
+            "--model",
+            "asr_consistent_quality_lagf",
+            "--asr-consistency-weight",
+            "0.05",
+            "--no-language",
+            "--v5-screen",
+            "--skip-test",
+        ]
+    )
+
+    assert args.model == "asr_consistent_quality_lagf"
+    assert args.asr_consistency_weight == 0.05
+    assert args.no_language is True
+    assert args.v5_screen is True
+
+
 def test_feature_stats_command_writes_report(tmp_path, monkeypatch, capsys):
     records = make_cli_records(2)
     store = FeatureStore(tmp_path / "features")

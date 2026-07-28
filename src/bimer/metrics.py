@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Sequence
 
 import numpy as np
@@ -58,7 +59,7 @@ def _cluster_bootstrap_indices(
     *,
     iterations: int,
     seed: int,
-):
+) -> Iterator[np.ndarray]:
     clusters = np.asarray(cluster_ids).astype(str)
     unique = np.unique(clusters)
     if not len(unique):

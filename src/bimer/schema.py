@@ -149,7 +149,7 @@ class AnalysisResult:
     def label_distribution(self) -> dict[str, float]:
         counts = {label: 0 for label in EMOTION_LABELS}
         for segment in self.segments:
-            counts[str(segment.emotion)] += 1
+            counts[normalize_emotion(str(segment.emotion))] += 1
         total = len(self.segments)
         if total == 0:
             return {label: 0.0 for label in EMOTION_LABELS}

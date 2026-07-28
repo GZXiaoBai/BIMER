@@ -1,0 +1,29 @@
+[defaults]
+manifest = "/root/autodl-tmp/bimer/data/processed/v2/all.jsonl"
+features = "/root/autodl-tmp/bimer/artifacts/features/bilingual-v2-quality"
+paired_manifest = "/root/autodl-tmp/bimer/data/processed/v2/corruption-train-10pct-joint-asr.jsonl"
+paired_features = "/root/autodl-tmp/bimer/artifacts/features/v2-corruption-joint-whisper"
+validation_manifest = "/root/autodl-tmp/bimer/artifacts/features/v3-validation/manifests/validation-clean.jsonl"
+whisper_validation_manifest = "/root/autodl-tmp/bimer/artifacts/features/v3-validation/manifests/validation-whisper.jsonl"
+whisper_validation_features = "/root/autodl-tmp/bimer/artifacts/features/v3-validation/whisper"
+audio_validation_features = "/root/autodl-tmp/bimer/artifacts/features/v3-validation/audio-10db"
+video_validation_features = "/root/autodl-tmp/bimer/artifacts/features/v3-validation/video-50"
+output = "/root/autodl-tmp/bimer/artifacts/experiments/v5"
+device = "cuda"
+learning_rate = 0.0001
+corrupted_classification_weight = 0.5
+max_epochs = 50
+min_epochs = 15
+patience = 7
+
+screen_betas = [0.05, 0.10]
+seeds = [42, 123, 2026]
+
+[acceptance]
+clean_weighted_f1_min_delta = -0.003
+whisper_weighted_f1_min_gain = 0.015
+per_language_whisper_min_gain = 0.005
+clean_macro_f1_min_delta = -0.003
+audio_10db_min_delta = -0.005
+video_drop_50_min_delta = -0.005
+gpu_budget_seconds = 36000

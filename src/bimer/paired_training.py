@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Literal, Sequence
 
@@ -70,7 +71,7 @@ class BalancedCorruptionPairSampler(Sampler[int]):
             raise ValueError("epoch must be non-negative")
         self.epoch = epoch
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[int]:
         groups: dict[str, list[int]] = {"meld": [], "emotiontalk": []}
         for index, pair in enumerate(self.pairs):
             groups.setdefault(pair.clean.dataset, []).append(index)

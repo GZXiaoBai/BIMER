@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -11,7 +12,7 @@ from bimer.experiment import (
     run_experiment,
 )
 from bimer.feature_store import FeatureShard, FeatureStore
-from bimer.manifest import write_manifest
+from bimer.manifest import read_manifest, write_manifest
 from bimer.schema import UtteranceRecord
 from bimer.training import DialogueExample
 
@@ -525,6 +526,88 @@ def test_v3_ranking_rejects_missing_paired_augmentations_before_loading_data(
             ),
             device_name="cpu",
         )
+
+
+def test_v5_consistency_rejects_missing_paired_augmentations_before_loading_data(
+    tmp_path,
+):
+    with pytest.raises(ValueError, match="ASR consistency requires paired augmentations"):
+        run_experiment(
+            manifest_path=tmp_path / "not-read.jsonl",
+            feature_root=tmp_path / "features",
+            output_directory=tmp_path / "results",
+            config=ExperimentConfig(
+                model="asr_consistent_quality_lagf",
+                asr_consistency_weight=0.05,
+                protocol_stage="v5_screen",
+                evaluate_test=False,
+            ),
+            device_name="cpu",
+        )
+
+
+def test_v5_tiny_paired_experiment_saves_adapter_and_consistency_evidence(
+    tmp_path,
+):
+    manifest, features = _write_tiny_joint_data(tmp_path)
+    training_records = [
+        replace(record, text="whisper text", text_source="whisper")
+        for record in read_manifest(manifest)
+        if str(record.split) == "train"
+    ]
+    paired_manifest = write_manifest(
+        training_records,
+        tmp_path / "paired-manifest.jsonl",
+    )
+    paired_store = FeatureStore(tmp_path / "paired-features")
+    for dataset in ("meld", "emotiontalk"):
+        group = [record for record in training_records if record.dataset == dataset]
+        paired_store.write(
+            dataset,
+            "train",
+            0,
+            FeatureShard(
+                sample_ids=np.asarray([record.sample_id for record in group]),
+                text=-np.ones((len(group), 4), np.float32),
+                audio=np.ones((len(group), 6), np.float32),
+                vision=np.ones((len(group), 5), np.float32),
+                modality_mask=np.ones((len(group), 3), np.bool_),
+            ),
+        )
+
+    result = run_experiment(
+        manifest_path=manifest,
+        feature_root=features,
+        output_directory=tmp_path / "v5-results",
+        config=ExperimentConfig(
+            model="asr_consistent_quality_lagf",
+            hidden_dim=8,
+            batch_size=2,
+            max_epochs=1,
+            min_epochs=1,
+            patience=1,
+            modality_dropout=0.0,
+            use_language_embedding=False,
+            evaluate_test=False,
+            protocol_stage="v5_screen",
+            augmentation_manifests=(str(paired_manifest),),
+            augmentation_feature_roots=(str(paired_store.root),),
+            augmentation_modalities=("text",),
+            augmentation_severities=(1.0,),
+            asr_consistency_weight=0.05,
+        ),
+        device_name="cpu",
+    )
+
+    payload = json.loads(result.read_text(encoding="utf-8"))
+    assert payload["config"]["asr_consistency_weight"] == 0.05
+    assert payload["history"]["epochs"][0]["asr_consistency_loss"] >= 0.0
+    checkpoint = __import__("torch").load(
+        result.parent / "best.pt",
+        map_location="cpu",
+        weights_only=False,
+    )
+    assert any("text_adapter" in name for name in checkpoint["model_state_dict"])
 
 
 def test_checkpoint_evaluation_can_target_validation_without_test(tmp_path):

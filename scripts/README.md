@@ -26,6 +26,11 @@ schema, and current tests.
 - `run_v3_*`, `summarize_v3_*`: stopped V3 ranking/loss study.
 - `run_v4_*`, `summarize_v4_*`, `prepare_v4_*`: validation-only V4 LoRA and
   adaptive-context study.
+- `run_v5_experiments.py`, `summarize_v5_screen.py`,
+  `freeze_v5_selection.py`, `run_v5_exploratory_test.py`: bounded
+  validation-first Whisper-consistency study. `run_v5_autodl.sh` is its
+  versioned cloud wrapper with a cumulative 10-hour budget and automatic
+  shutdown.
 - report builders and paired-bootstrap utilities: preserve figures and
   aggregate evidence used by the thesis.
 

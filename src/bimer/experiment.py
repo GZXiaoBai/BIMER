@@ -68,6 +68,7 @@ class ExperimentConfig:
     gate_ranking_weight: float = 0.0
     gate_ranking_margin: float = 0.10
     prototype_loss_weight: float = 0.0
+    asr_consistency_weight: float = 0.0
     prototype_temperature: float = 0.07
     use_adaptive_context_gate: bool = True
     context_gate_override: float | None = None
@@ -180,12 +181,15 @@ def _run_experiment_impl(
         or config.gate_ranking_weight < 0
         or config.gate_ranking_margin < 0
         or config.prototype_loss_weight < 0
+        or config.asr_consistency_weight < 0
     ):
         raise ValueError("training objective weights and margin must be non-negative")
     if config.prototype_temperature <= 0:
         raise ValueError("prototype_temperature must be positive")
     if config.gate_ranking_weight > 0 and not paired_requested:
         raise ValueError("gate ranking requires paired augmentations")
+    if config.asr_consistency_weight > 0 and not paired_requested:
+        raise ValueError("ASR consistency requires paired augmentations")
     if paired_requested and len(config.augmentation_modalities) != len(
         config.augmentation_manifests
     ):
@@ -411,6 +415,7 @@ def _run_experiment_impl(
                 gate_ranking_weight=config.gate_ranking_weight,
                 gate_ranking_margin=config.gate_ranking_margin,
                 prototype_loss_weight=config.prototype_loss_weight,
+                asr_consistency_weight=config.asr_consistency_weight,
             ),
             device=device,
             class_weights=(

@@ -35,6 +35,8 @@ defense system. New code should preserve these meanings.
   selection may use the guarded exploratory test entry once.
 - Failed predeclared criteria are retained as negative evidence; thresholds are
   not relaxed after results are observed.
+- V5 `ASRConsistentTextAdapter` is an exploratory residual over frozen feature
+  inputs. A V5 result never changes the identity of V2 confirmatory evidence.
 
 ## Deployment boundary
 

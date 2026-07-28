@@ -8,6 +8,7 @@ import torch
 from torch import Tensor, nn
 
 from .feature_store import FeatureShard
+from .model import FusionOutput
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +59,13 @@ def compute_input_statistics(
 
 
 class InputNormalizer(nn.Module):
+    text_mean: Tensor
+    text_std: Tensor
+    audio_mean: Tensor
+    audio_std: Tensor
+    vision_mean: Tensor
+    vision_std: Tensor
+
     def __init__(self, input_dims: Sequence[int]) -> None:
         super().__init__()
         if len(input_dims) != 3:
@@ -106,7 +114,7 @@ class NormalizedModel(nn.Module):
         audio_features: Tensor,
         vision_features: Tensor,
         **inputs: Tensor,
-    ):
+    ) -> FusionOutput:
         text, audio, vision = self.normalizer(
             text_features,
             audio_features,

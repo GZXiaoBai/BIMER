@@ -7,7 +7,8 @@
 - Task: seven-class utterance emotion recognition in Chinese and English
 - Labels: `neutral`, `joy`, `sadness`, `anger`, `surprise`, `fear`, `disgust`
 - Context: up to 32 utterances with an overlap of 8
-- Status: frozen deployment model; V3 is not deployed and V4 is not deployed
+- Status: frozen V2 deployment model. V3 is not deployed. V4 is not deployed.
+  Exploratory V5 is not deployed.
 
 The public deployment manifest records the expected paths, hashes, encoder IDs,
 revisions, calibration parameters and runtime policy. The checkpoint and
@@ -89,6 +90,15 @@ Gate-ranking candidates at λ = 0.05, 0.10 and 0.20 all failed the required
 audio and visual gate weights, but this did not translate into sufficient
 classification gain. Training stopped according to protocol and V2 remained
 the deployment model.
+
+## V4 and V5 exploratory boundary
+
+V4 did not pass all predeclared validation criteria and never accessed the
+official test set. V5 targets the observed human-to-Whisper transcription
+degradation with a quality-conditioned residual adapter and paired
+prediction-consistency loss. V5 remains post-hoc exploratory even if it passes
+validation; v1.1.0 continues to deploy V2. See
+[docs/v5_protocol.md](docs/v5_protocol.md).
 
 ## Runtime behavior
 
