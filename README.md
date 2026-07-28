@@ -237,3 +237,9 @@ results/            可公开复核的聚合结果，不含逐样本记录
 data/               本地清单；原始数据默认不纳入Git
 artifacts/          特征、检查点、实验结果和导出文件
 ```
+
+最终交付前请同时核对：
+
+- [学校论文模板迁移清单](docs/school-template-mapping.md)
+- [v1.1.0 Release Checklist](docs/releases/v1.1.0-checklist.md)
+- [最终交付状态](docs/final_delivery_status.md)
